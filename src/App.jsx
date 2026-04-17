@@ -3713,7 +3713,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       });
     };
 
-    const playerHit = (gs) => {
+const playerHit = (gs) => {
       gs.lives--;
       playAudio('boom');
       gs.weaponLevel = Math.max(1, gs.weaponLevel - 1); // Lose weapon power
@@ -3725,6 +3725,10 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         });
       }
       gs.bullets = []; gs.enemyBullets = [];
+      
+      // FIX: Instantly trigger invulnerability to prevent multi-frame deaths!
+      gs.player.invuln = 120; 
+
       if (gs.lives <= 0) {
           gs.status = 'gameover';
           window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Over' }));
@@ -3733,7 +3737,6 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         gs.player.x = NATIVE_W / 2; gs.player.y = NATIVE_H - 80; gs.player.cooldown = 0;
       }
     };
-
     const spawnBoss = (gs) => {
       gs.boss = {
         x: NATIVE_W/2, y: -100, w: 90, h: 45, 
@@ -3968,7 +3971,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         }
       }
 
-      // General Bullet Collision Processing
+// General Bullet Collision Processing
       for (let j = gs.bullets.length - 1; j >= 0; j--) {
         let b = gs.bullets[j];
         let bulletHit = false;
@@ -4015,28 +4018,31 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
           }
         }
 
-        // Process enemy deaths from this frame
-        for (let i = gs.enemies.length - 1; i >= 0; i--) {
-            let e = gs.enemies[i];
-            if (e.hp <= 0) {
-              addScore(gs, e.pts);
-              playAudio('boom');
-              let explosionCount = e.class === 'bomber' ? 25 : 10;
-              for(let k=0; k<explosionCount; k++) {
-                gs.particles.push({ x: e.x + (Math.random()-0.5)*10, y: e.y + (Math.random()-0.5)*10, vx: (Math.random()-0.5)*5, vy: (Math.random()-0.5)*5, life: 20 + Math.random()*25, color: Math.random() > 0.5 ? '#f00' : '#ffaa00' });
-              }
-              
-              // Drop Logic
-              gs.kills[e.tier]++;
-              if ((e.tier === 'basic' && gs.kills.basic >= 15) || 
-                  (e.tier === 'medium' && gs.kills.medium >= 5) || 
-                  (e.tier === 'heavy' && gs.kills.heavy >= 2)) {
-                  spawnPowerup(gs, e.x, e.y);
-                  gs.kills[e.tier] = 0;
-              }
-              gs.enemies.splice(i, 1);
+        if (bulletHit && b.type !== 'laser') gs.bullets.splice(j, 1);
+      }
+
+      // FIX: Process enemy deaths from this frame (MOVED OUTSIDE THE BULLET LOOP)
+      for (let i = gs.enemies.length - 1; i >= 0; i--) {
+          let e = gs.enemies[i];
+          if (e.hp <= 0) {
+            addScore(gs, e.pts);
+            playAudio('boom');
+            let explosionCount = e.class === 'bomber' ? 25 : 10;
+            for(let k=0; k<explosionCount; k++) {
+              gs.particles.push({ x: e.x + (Math.random()-0.5)*10, y: e.y + (Math.random()-0.5)*10, vx: (Math.random()-0.5)*5, vy: (Math.random()-0.5)*5, life: 20 + Math.random()*25, color: Math.random() > 0.5 ? '#f00' : '#ffaa00' });
             }
-        }
+            
+            // Drop Logic
+            gs.kills[e.tier]++;
+            if ((e.tier === 'basic' && gs.kills.basic >= 15) || 
+                (e.tier === 'medium' && gs.kills.medium >= 5) || 
+                (e.tier === 'heavy' && gs.kills.heavy >= 2)) {
+                spawnPowerup(gs, e.x, e.y);
+                gs.kills[e.tier] = 0;
+            }
+            gs.enemies.splice(i, 1);
+          }
+      }
 
         if (bulletHit && b.type !== 'laser') gs.bullets.splice(j, 1);
       }
@@ -5311,7 +5317,7 @@ const handleReturnToMenu = useCallback(() => {
     window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'menuPlay' })); 
   }, []);
 
-  const handleStart = async () => {
+const handleStart = async () => {
     if (document.documentElement.requestFullscreen) {
       try { await document.documentElement.requestFullscreen(); } catch (err) {}
     }
@@ -5319,13 +5325,13 @@ const handleReturnToMenu = useCallback(() => {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     audioContextRef.current = new AudioContext();
     
-    buildTracks(audioContextRef.current).then(bufs => {
-      bgmBuffersRef.current = bufs;
-      // ADDED: Boot up the menu music as soon as the buffers finish rendering!
-      window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'menuPlay' }));
-    });
-
+    // FIX: Await the track builder before proceeding!
+    const bufs = await buildTracks(audioContextRef.current);
+    bgmBuffersRef.current = bufs;
+    
+    // Now start the menu and the music safely
     setGameState('menu');
+    window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'menuPlay' }));
   };
 
   const handleGameSelect = (game) => {
