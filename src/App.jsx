@@ -3479,7 +3479,6 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
 
   const NATIVE_W = 640;
   const NATIVE_H = 480;
-  const MAX_TICK = 3000; // Duration of a standard level before clear/boss
 
   const state = useRef({
     status: 'start',
@@ -3514,12 +3513,11 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
     keys: {}
   });
 
-  // Themes rotate every 4 levels
   const THEMES = [
-    { water: '#001a44', sand: '#887733', jungle: '#004400', name: "PACIFIC SEA" },
-    { water: '#003366', sand: '#aa9955', jungle: '#226622', name: "DAYBREAK" },
-    { water: '#221133', sand: '#554422', jungle: '#112211', name: "DUSK STRIKE" },
-    { water: '#050511', sand: '#222211', jungle: '#001100', name: "NIGHT OPERATION" }
+    { water: '#001a44', sand: '#887733', jungle: '#004400', name: "MISSION 1: PACIFIC SEA" },
+    { water: '#003366', sand: '#aa9955', jungle: '#226622', name: "MISSION 2: DAYBREAK" },
+    { water: '#221133', sand: '#554422', jungle: '#112211', name: "MISSION 3: DUSK STRIKE" },
+    { water: '#050511', sand: '#222211', jungle: '#001100', name: "MISSION 4: NIGHT OPERATION" }
   ];
 
   const PALETTE = {
@@ -3590,7 +3588,6 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
     const ctx = canvas.getContext('2d');
     let animationFrameId;
 
-    // --- AUDIO SYSTEM ---
     const playAudio = (type) => {
       if (!audioCtx || audioCtx.state !== 'running') return;
       const t = audioCtx.currentTime;
@@ -3658,7 +3655,6 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
 
     const formatScore = (s) => String(s).padStart(6, '0');
 
-    // --- GAME LOGIC HANDLERS ---
     const addScore = (gs, pts) => {
       gs.score += pts;
       if (gs.score > gs.highScore) gs.highScore = gs.score;
@@ -3720,7 +3716,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         });
       }
       gs.bullets = []; gs.enemyBullets = [];
-      gs.player.invuln = 120; // Immediate invulnerability
+      gs.player.invuln = 120; 
 
       if (gs.lives <= 0) {
           gs.status = 'gameover';
@@ -3740,11 +3736,9 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       showMessage(gs, "WARNING: HEAVY BOMBER APPROACHING");
     };
 
-    // --- CORE LOOP ---
     const update = () => {
       let gs = state.current;
       let keys = gs.keys;
-      let themeIdx = Math.floor((gs.level - 1) / 4) % THEMES.length;
 
       if (keys['m'] || keys['M']) { onMenu(); return; }
 
@@ -3754,7 +3748,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         gs.player = { x: NATIVE_W/2, y: NATIVE_H - 80, w: 45, h: 30, speed: 5, cooldown: 0, invuln: 120 };
         gs.bullets = []; gs.enemyBullets = []; gs.enemies = []; gs.powerups = []; gs.particles = []; gs.boss = null;
         initMap(gs);
-        showMessage(gs, `MISSION 1: ${THEMES[0].name}`);
+        showMessage(gs, THEMES[0].name);
         window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Play' }));
       }
 
@@ -3763,7 +3757,6 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Start' }));
       }
 
-      // Map & Environment Updates (Always run unless start/gameover)
       if (gs.status === 'playing' || gs.status === 'respawning' || gs.status === 'level_transition') {
         gs.bgScrollY += 0.8;
         for (let i = gs.islands.length - 1; i >= 0; i--) {
@@ -3781,13 +3774,10 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         if (gs.messageTimer > 0) gs.messageTimer--;
       }
 
-      // --- CINEMATIC LEVEL TRANSITION ---
       if (gs.status === 'level_transition') {
         gs.transitionTimer--;
-        gs.player.y -= 4; // Ship flies off screen
+        gs.player.y -= 4; 
         gs.player.invuln = 10;
-        
-        // Clean screen
         gs.enemies = []; gs.enemyBullets = []; gs.powerups = [];
         
         if (gs.transitionTimer <= 0) {
@@ -3795,7 +3785,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
            let newThemeIdx = Math.floor((gs.level - 1) / 4) % THEMES.length;
            initMap(gs); 
            gs.player.x = NATIVE_W/2; gs.player.y = NATIVE_H - 80;
-           showMessage(gs, `MISSION ${gs.level}: ${THEMES[newThemeIdx].name}`);
+           showMessage(gs, `${THEMES[newThemeIdx].name}`);
            gs.status = 'playing';
         }
         return; 
@@ -3813,12 +3803,40 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       gs.levelTick++;
       let p = gs.player;
 
-      // LEVEL PROGRESSION TRIGGER
+      const MAX_TICK = 3000;
+      
+      // --- RESTORED ENEMY DEPLOYMENT ENGINE ---
       if (!gs.boss) {
+        // Spawn Powerups at 40% and 80% marks
         if (gs.levelTick === Math.floor(MAX_TICK * 0.4) || gs.levelTick === Math.floor(MAX_TICK * 0.8)) {
            spawnPowerup(gs, 50 + Math.random()*(NATIVE_W-100), -20);
         }
-        if (gs.levelTick >= MAX_TICK) {
+        
+        // Spawn Standard Enemies
+        if (gs.levelTick < MAX_TICK - 100) {
+           let spawnRate = Math.max(20, 70 - (gs.level * 3));
+           if (gs.tick % spawnRate === 0) {
+             let rand = Math.random();
+             let startX = 30 + Math.random() * (NATIVE_W - 60);
+             
+             if (rand < 0.4) {
+               let count = Math.random() > 0.5 ? 5 : 3;
+               for(let i=0; i<count; i++) {
+                 let offsetX = (i - Math.floor(count/2)) * 30;
+                 let offsetY = Math.abs(i - Math.floor(count/2)) * -25;
+                 gs.enemies.push({ tier: 'basic', class: 'tiny', x: startX + offsetX, y: -30 + offsetY, hp: 1, pts: 20, tick: 0, startX: startX + offsetX, isLeader: i === Math.floor(count/2) });
+               }
+             } else if (rand < 0.7) {
+               gs.enemies.push({ tier: 'basic', class: 'fighter', x: startX, y: -30, hp: 2, pts: 50, tick: 0, startX: startX });
+             } else if (rand < 0.9) {
+               gs.enemies.push({ tier: 'heavy', class: 'bomber', x: startX, y: -40, hp: 8, pts: 150, tick: 0, startX: startX });
+             } else {
+               gs.enemies.push({ tier: 'medium', class: 'boat', x: Math.random() > 0.5 ? -30 : NATIVE_W + 30, y: 80 + Math.random() * 200, hp: 5, pts: 200, tick: 0, dir: Math.random() > 0.5 ? 1 : -1 });
+             }
+           }
+        } 
+        // End of Level Trigger
+        else if (gs.levelTick >= MAX_TICK) {
            if (gs.level % 4 === 0) {
              spawnBoss(gs);
            } else {
@@ -3839,13 +3857,11 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       p.x = Math.max(20, Math.min(NATIVE_W - 20, p.x));
       p.y = Math.max(20, Math.min(NATIVE_H - 20, p.y));
 
-      // SMART BOMB
       if ((keys['Shift'] || keys['e']) && gs.bombs > 0 && p.cooldown <= 0) {
          triggerBomb(gs);
          p.cooldown = 60;
       }
 
-      // PLAYER SHOOTING
       if (keys[' '] && p.cooldown <= 0) {
         let wLvl = Math.min(3, gs.weaponLevel);
         if (gs.weapon === 'twin') {
@@ -3880,14 +3896,12 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         }
       }
 
-      // Update Player Bullets
       for (let i = gs.bullets.length - 1; i >= 0; i--) {
         let b = gs.bullets[i];
         b.x += b.vx; b.y += b.vy;
         if (b.y < -40) gs.bullets.splice(i, 1);
       }
 
-      // Update Powerups
       for (let i = gs.powerups.length - 1; i >= 0; i--) {
         let pu = gs.powerups[i];
         pu.y += pu.vy;
@@ -3902,7 +3916,6 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         if (pu.y > NATIVE_H + 20) gs.powerups.splice(i, 1);
       }
 
-      // Update Enemy Bullets
       for (let i = gs.enemyBullets.length - 1; i >= 0; i--) {
         let eb = gs.enemyBullets[i];
         eb.x += eb.vx; eb.y += eb.vy;
@@ -3914,31 +3927,6 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         }
       }
 
-      // Enemy Spawning (Stops if Boss is present or approaching)
-      if (!gs.boss && gs.levelTick < MAX_TICK - 100) {
-        let spawnRate = Math.max(20, 70 - (gs.level * 3));
-        if (gs.tick % spawnRate === 0) {
-          let rand = Math.random();
-          let startX = 30 + Math.random() * (NATIVE_W - 60);
-          
-          if (rand < 0.4) {
-            let count = Math.random() > 0.5 ? 5 : 3;
-            for(let i=0; i<count; i++) {
-              let offsetX = (i - Math.floor(count/2)) * 30;
-              let offsetY = Math.abs(i - Math.floor(count/2)) * -25;
-              gs.enemies.push({ tier: 'basic', class: 'tiny', x: startX + offsetX, y: -30 + offsetY, hp: 1, pts: 20, tick: 0, startX: startX + offsetX, isLeader: i === Math.floor(count/2) });
-            }
-          } else if (rand < 0.7) {
-            gs.enemies.push({ tier: 'basic', class: 'fighter', x: startX, y: -30, hp: 2, pts: 50, tick: 0, startX: startX });
-          } else if (rand < 0.9) {
-            gs.enemies.push({ tier: 'heavy', class: 'bomber', x: startX, y: -40, hp: 8, pts: 150, tick: 0, startX: startX });
-          } else {
-            gs.enemies.push({ tier: 'medium', class: 'boat', x: Math.random() > 0.5 ? -30 : NATIVE_W + 30, y: 80 + Math.random() * 200, hp: 5, pts: 200, tick: 0, dir: Math.random() > 0.5 ? 1 : -1 });
-          }
-        }
-      }
-
-      // Boss Logic
       if (gs.boss) {
         let b = gs.boss;
         b.tick++;
@@ -3957,7 +3945,6 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         if (p.invuln <= 0 && Math.hypot(b.x - p.x, b.y - p.y) < b.w/2) playerHit(gs);
       }
 
-      // Enemy Logic
       for (let i = gs.enemies.length - 1; i >= 0; i--) {
         let e = gs.enemies[i];
         e.tick++;
@@ -3985,12 +3972,10 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         }
       }
 
-      // --- BULLET COLLISION LOGIC ---
       for (let j = gs.bullets.length - 1; j >= 0; j--) {
         let b = gs.bullets[j];
         let bulletHit = false;
 
-        // Check Boss First
         if (gs.boss && gs.boss.state === 'fighting') {
            if (Math.abs(b.x - gs.boss.x) < gs.boss.w/2 && Math.abs(b.y - gs.boss.y) < gs.boss.h/2) {
               gs.boss.hp -= (b.type === 'missile' ? 5 : (b.type === 'laser' ? 2 : 1));
@@ -4009,7 +3994,6 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
            }
         }
 
-        // Check Normal Enemies if not hitting boss
         if (!bulletHit) {
           for (let i = gs.enemies.length - 1; i >= 0; i--) {
             let e = gs.enemies[i];
@@ -4034,7 +4018,6 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         if (bulletHit && b.type !== 'laser') gs.bullets.splice(j, 1);
       }
 
-      // --- ENEMY DEATH LOGIC ---
       for (let i = gs.enemies.length - 1; i >= 0; i--) {
           let e = gs.enemies[i];
           if (e.hp <= 0) {
@@ -4057,7 +4040,6 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       }
     };
 
-    // --- RENDER ENGINE ---
     const draw = () => {
       let gs = state.current;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -5301,7 +5283,7 @@ export default function App() {
   const bgmBuffersRef = useRef({});
   const bgmNodeRef = useRef(null);
 
-  // Setup Global Game Audio Listener
+// Setup Global Game Audio Listener
   useEffect(() => {
     const handleBgm = (e) => {
       if (bgmNodeRef.current) { try { bgmNodeRef.current.stop(); } catch(err){} }
@@ -5312,7 +5294,12 @@ export default function App() {
       
       const src = actx.createBufferSource();
       src.buffer = bgmBuffersRef.current[trackName];
-      if (!trackName.includes('Over')) src.loop = true;
+      
+      // FIX: Tell the engine not to loop 'Over' (death) AND 'Start' (intro jingle) tracks
+      if (!trackName.includes('Over') && !trackName.includes('Start')) {
+          src.loop = true;
+      }
+      
       src.connect(actx.destination);
       src.start();
       bgmNodeRef.current = src;
