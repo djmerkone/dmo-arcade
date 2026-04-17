@@ -3557,6 +3557,9 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
     tinyFighter: [
       "...D...", "..YYY..", ".Y.R.Y.", "...Y..."
     ],
+    turret: [ // NEW: Ground-based stationary turret!
+      "...D...", "..DGD..", ".DGGGD.", "DGGGGGD", "DDDDDDD"
+    ],
     bomber: [
       ".........D.........", "........OOO........", ".......OOOOO.......",
       "......OOOOOOO......", "...D..OOOOOOO..D...", "...O..OOOOOOO..O...",
@@ -3679,7 +3682,31 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       gs.enemyBullets.push({ x: ex, y: ey, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, r: 4 });
     };
 
+    // --- NEW: SATELLITE SHIELD LOGIC ---
     const playerHit = (gs) => {
+      // If the player has a satellite, the satellite takes the hit and is destroyed!
+      if (gs.satellites.length > 0) {
+         let sat = gs.satellites[0];
+         sat.hp--;
+         playAudio('hit');
+         
+         // Blue sparks indicate shield damage
+         for(let k=0; k<20; k++) {
+           gs.particles.push({
+             x: gs.player.x + 22, y: gs.player.y + 15, 
+             vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, 
+             life: 20, color: '#0ff'
+           });
+         }
+         
+         if (sat.hp <= 0) gs.satellites.shift();
+         
+         // Give the player 1 second of invulnerability so a single hit doesn't instantly strip all shields
+         gs.player.invuln = 60; 
+         return; 
+      }
+
+      // If no satellites, player dies normally
       gs.lives--; playAudio('boom'); gs.weaponLevel = Math.max(1, gs.weaponLevel - 1); gs.satellites = [];
       for(let k=0; k<60; k++) gs.particles.push({ x: gs.player.x, y: gs.player.y, vx: (Math.random()-0.5)*12, vy: (Math.random()-0.5)*12, life: 40 + Math.random()*40, color: Math.random() > 0.5 ? '#f00' : '#ffaa00' });
       gs.bullets = []; gs.enemyBullets = []; gs.player.invuln = 120; 
@@ -3803,8 +3830,11 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
 
       if ((keys['Shift'] || keys['e']) && gs.bombs > 0 && p.cooldown <= 0) { triggerBomb(gs); p.cooldown = 60; }
 
+      // --- PLAYER & SATELLITE SHOOTING LOGIC ---
       if (keys[' '] && p.cooldown <= 0) {
         let wLvl = Math.min(3, gs.weaponLevel);
+        
+        // Ship Main Guns
         if (gs.weapon === 'twin') {
           gs.bullets.push({ x: p.x - 12, y: p.y - 15, vx: 0, vy: -12 - wLvl*2, w: 3+wLvl, h: 12+wLvl*2, type: 'bullet' });
           gs.bullets.push({ x: p.x + 9, y: p.y - 15, vx: 0, vy: -12 - wLvl*2, w: 3+wLvl, h: 12+wLvl*2, type: 'bullet' });
@@ -3832,6 +3862,13 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
           gs.bullets.push({ x: p.x - 2, y: p.y - 40, vx: 0, vy: -30, w: 6 + wLvl*2, h: 80, type: 'laser' });
           p.cooldown = 10; playAudio('laser');
         }
+
+        // NEW: Satellites lay down suppressing fire alongside you!
+        gs.satellites.forEach(sat => {
+           let sx = p.x + Math.cos(sat.angle)*40;
+           let sy = p.y + Math.sin(sat.angle)*40;
+           gs.bullets.push({ x: sx, y: sy, vx: 0, vy: -12, w: 4, h: 12, type: 'bullet' });
+        });
       }
 
       for (let i = gs.bullets.length - 1; i >= 0; i--) {
@@ -3874,22 +3911,33 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         if (p.invuln <= 0 && Math.hypot(eb.x - p.x, eb.y - p.y) < 10) { playerHit(gs); break; }
       }
 
+      // --- NEW: SPAWNING GOVERNANCE & TURRETS ---
       if (!gs.boss && gs.levelTick < MAX_TICK - 100) {
-        let spawnRate = Math.max(15, 70 - (gs.world * 5) - (gs.subLevel * 2)) / gs.loopMult;
-        if (gs.tick % Math.floor(spawnRate) === 0) {
-          let rand = Math.random(); let startX = 30 + Math.random() * (NATIVE_W - 60);
-          if (rand < 0.4) {
-            let count = Math.random() > 0.5 ? 5 : 3;
-            for(let i=0; i<count; i++) {
-              let offsetX = (i - Math.floor(count/2)) * 30; let offsetY = Math.abs(i - Math.floor(count/2)) * -25;
-              gs.enemies.push({ tier: 'tiny', class: 'tiny', x: startX + offsetX, y: -30 + offsetY, hp: 1, pts: 20, tick: 0, startX: startX + offsetX, isLeader: i === Math.floor(count/2) });
+        
+        // Strict limit on how many enemies can be on screen simultaneously based on world progression
+        let maxEnemies = 5 + Math.floor(gs.world * 1.5) + gs.subLevel;
+        
+        if (gs.enemies.length < maxEnemies) {
+          let spawnRate = Math.max(15, 70 - (gs.world * 5) - (gs.subLevel * 2)) / gs.loopMult;
+          if (gs.tick % Math.floor(spawnRate) === 0) {
+            let rand = Math.random(); let startX = 30 + Math.random() * (NATIVE_W - 60);
+            
+            if (rand < 0.15) {
+              // 15% Chance to spawn the new Ground Turret
+              gs.enemies.push({ tier: 'medium', class: 'turret', x: startX, y: -30, hp: 5*gs.loopMult, pts: 100, tick: 0, startX: startX });
+            } else if (rand < 0.45) {
+              let count = Math.random() > 0.5 ? 5 : 3;
+              for(let i=0; i<count; i++) {
+                let offsetX = (i - Math.floor(count/2)) * 30; let offsetY = Math.abs(i - Math.floor(count/2)) * -25;
+                gs.enemies.push({ tier: 'tiny', class: 'tiny', x: startX + offsetX, y: -30 + offsetY, hp: 1, pts: 20, tick: 0, startX: startX + offsetX, isLeader: i === Math.floor(count/2) });
+              }
+            } else if (rand < 0.7) {
+              gs.enemies.push({ tier: 'basic', class: 'fighter', x: startX, y: -30, hp: 2*gs.loopMult, pts: 50, tick: 0, startX: startX });
+            } else if (rand < 0.9) {
+              gs.enemies.push({ tier: 'heavy', class: 'bomber', x: startX, y: -40, hp: 8*gs.loopMult, pts: 150, tick: 0, startX: startX });
+            } else {
+              gs.enemies.push({ tier: 'medium', class: 'boat', x: Math.random() > 0.5 ? -30 : NATIVE_W + 30, y: 80 + Math.random() * 200, hp: 5*gs.loopMult, pts: 200, tick: 0, dir: Math.random() > 0.5 ? 1 : -1 });
             }
-          } else if (rand < 0.7) {
-            gs.enemies.push({ tier: 'basic', class: 'fighter', x: startX, y: -30, hp: 2*gs.loopMult, pts: 50, tick: 0, startX: startX });
-          } else if (rand < 0.9) {
-            gs.enemies.push({ tier: 'heavy', class: 'bomber', x: startX, y: -40, hp: 8*gs.loopMult, pts: 150, tick: 0, startX: startX });
-          } else {
-            gs.enemies.push({ tier: 'medium', class: 'boat', x: Math.random() > 0.5 ? -30 : NATIVE_W + 30, y: 80 + Math.random() * 200, hp: 5*gs.loopMult, pts: 200, tick: 0, dir: Math.random() > 0.5 ? 1 : -1 });
           }
         }
       }
@@ -3901,7 +3949,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         } else if (b.state === 'fighting') {
           b.x = NATIVE_W/2 + Math.sin(b.tick * 0.02 * gs.loopMult) * (NATIVE_W/2 - 60);
           
-          if (gs.world === 7 && b.tick % 100 === 0) { // Final Boss Spawns Tinys
+          if (gs.world === 7 && b.tick % 100 === 0) { 
              for(let i=-1; i<=1; i+=2) gs.enemies.push({ tier: 'tiny', class: 'tiny', x: b.x + i*40, y: b.y, hp: 1, pts: 20, tick: 0, startX: b.x + i*40, isLeader: true });
           }
           if (b.tick % Math.floor(60 / gs.loopMult) === 0) {
@@ -3914,11 +3962,10 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         if (p.invuln <= 0 && Math.hypot(b.x - p.x, b.y - p.y) < b.w/2) playerHit(gs);
       }
 
-for (let i = gs.enemies.length - 1; i >= 0; i--) {
+      for (let i = gs.enemies.length - 1; i >= 0; i--) {
         let e = gs.enemies[i]; e.tick++;
-
+        
         if (e.class === 'tiny') {
-          // Slowed down from 6 to 3.5, and widened the swoop pattern slightly
           e.y += 3.5 * gs.loopMult; e.x = e.startX + Math.sin(e.tick * 0.08) * 35;
           if (e.isLeader && e.tick % 40 === 0 && Math.random() < 0.5) fireEnemyBullet(gs, e.x, e.y, 5);
         } else if (e.class === 'fighter') {
@@ -3927,13 +3974,17 @@ for (let i = gs.enemies.length - 1; i >= 0; i--) {
         } else if (e.class === 'bomber') {
           e.y += 1.2 * gs.loopMult;
           if (e.tick % 50 === 0) fireEnemyBullet(gs, e.x, e.y, 4.5);
-        } else if (e.class === 'boat') {
-          e.x += 1.0 * e.dir; e.y += 0.8; 
-          if (e.tick % 70 === 0) fireEnemyBullet(gs, e.x, e.y, 4);
+        } else if (e.class === 'boat' || e.class === 'turret') {
+          if (e.class === 'boat') e.x += 1.0 * e.dir; 
+          e.y += 0.8; // Turrets and Boats share the exact scroll speed of the terrain
+          if (e.tick % Math.floor(90 / gs.loopMult) === 0) fireEnemyBullet(gs, e.x, e.y, 4.5);
         }
 
         if (e.y > NATIVE_H + 50 || e.x < -60 || e.x > NATIVE_W + 60) { gs.enemies.splice(i, 1); continue; }
-        if (p.invuln <= 0 && e.class !== 'boat' && Math.hypot(e.x - p.x, e.y - p.y) < 18) { playerHit(gs); e.hp = 0; }
+        
+        if (p.invuln <= 0 && e.class !== 'boat' && e.class !== 'turret' && Math.hypot(e.x - p.x, e.y - p.y) < 18) { 
+           playerHit(gs); e.hp = 0; 
+        }
       }
 
       for (let j = gs.bullets.length - 1; j >= 0; j--) {
@@ -3953,11 +4004,11 @@ for (let i = gs.enemies.length - 1; i >= 0; i--) {
            }
         }
 
-if (!bulletHit) {
+        if (!bulletHit) {
           for (let i = gs.enemies.length - 1; i >= 0; i--) {
             let e = gs.enemies[i]; 
-            // Increased tiny hitbox to 14 to match the new larger scale
-            let hitbox = e.class === 'bomber' ? 22 : 14; 
+            let hitbox = e.class === 'bomber' ? 22 : (e.class === 'turret' ? 16 : 14);
+            
             if (Math.hypot(b.x - e.x, b.y - e.y) < hitbox) {
               e.hp -= (b.type === 'missile' ? 5 : (b.type === 'laser' ? 2 : 1)); bulletHit = true;
               if (b.type === 'missile') { 
@@ -3994,7 +4045,9 @@ if (!bulletHit) {
       let gs = state.current;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
+      let themeIdx = Math.floor((gs.level - 1) / 4) % THEMES.length;
       let theme = WORLDS[gs.world];
+      
       ctx.fillStyle = theme.water; ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
 
       if (gs.status === 'start') {
@@ -4010,9 +4063,9 @@ if (!bulletHit) {
         ctx.fillStyle = theme.jungle; isl.shapes.forEach(sh => { ctx.beginPath(); ctx.arc(Math.floor(isl.x + sh.ox), Math.floor(isl.y + sh.oy), sh.r * 0.75, 0, Math.PI*2); ctx.fill(); });
       });
 
-ctx.fillStyle = TIMES[gs.subLevel].tint; ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
-
-      // --- FIX: Add a dark overlay to make sprites pop against the terrain ---
+      ctx.fillStyle = TIMES[gs.subLevel].tint; ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
+      
+      // Darkness Overlay to push terrain back
       ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
       ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
 
@@ -4024,8 +4077,7 @@ ctx.fillStyle = TIMES[gs.subLevel].tint; ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
       });
 
       const shadowOffset = 12;
-      // FIX: Standardized scale to 3 for tiny enemies so they are larger and easier to see
-      gs.enemies.forEach(e => { if (e.class !== 'boat') drawSprite(SPRITES[e.class === 'tiny' ? 'tinyFighter' : e.class], e.x + shadowOffset, e.y + shadowOffset, 3, true); });
+      gs.enemies.forEach(e => { if (e.class !== 'boat' && e.class !== 'turret') drawSprite(SPRITES[e.class === 'tiny' ? 'tinyFighter' : e.class], e.x + shadowOffset, e.y + shadowOffset, 3, true); });
       if (gs.boss) drawSprite(SPRITES.boss, gs.boss.x + shadowOffset*2, gs.boss.y + shadowOffset*2, 3, true);
       
       if ((gs.status === 'playing' || gs.status === 'respawning' || gs.status === 'level_transition') && gs.player.invuln % 10 < 5) {
@@ -4033,8 +4085,8 @@ ctx.fillStyle = TIMES[gs.subLevel].tint; ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
          gs.satellites.forEach(sat => { drawSprite(SPRITES.satellite, gs.player.x + shadowOffset + Math.cos(sat.angle)*40, gs.player.y + shadowOffset + Math.sin(sat.angle)*40, 2, true); });
       }
 
-      gs.enemies.forEach(e => { if (e.class === 'boat') drawSprite(SPRITES.boat, e.x, e.y, 3, false); });
-      gs.enemies.forEach(e => { if (e.class !== 'boat') drawSprite(SPRITES[e.class === 'tiny' ? 'tinyFighter' : e.class], e.x, e.y, 3, false); });
+      gs.enemies.forEach(e => { if (e.class === 'boat' || e.class === 'turret') drawSprite(SPRITES[e.class], e.x, e.y, 3, false); });
+      gs.enemies.forEach(e => { if (e.class !== 'boat' && e.class !== 'turret') drawSprite(SPRITES[e.class === 'tiny' ? 'tinyFighter' : e.class], e.x, e.y, 3, false); });
       if (gs.boss) drawSprite(SPRITES.boss, gs.boss.x, gs.boss.y, 3, false);
 
       gs.powerups.forEach(pu => {
