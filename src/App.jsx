@@ -3496,7 +3496,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
     
     // Weapon & Inventory State
     bombs: 3,
-    weapon: 'twin', // 'twin', 'increase', 'spread', 'laser', 'missile'
+    weapon: 'twin', // 'twin', 'increase', '3gun', 'spread', 'laser', 'missile'
     weaponLevel: 1,
     
     // Enemy Kill Counters for Drops
@@ -3673,7 +3673,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
     };
 
     const spawnPowerup = (gs, x, y) => {
-      const types = ['increase', 'spread', 'laser', 'missile'];
+      const types = ['increase', '3gun', 'spread', 'laser', 'missile'];
       const type = types[Math.floor(Math.random() * types.length)];
       gs.powerups.push({ x, y, type, vy: 1.5, w: 16, h: 16 });
     };
@@ -3725,8 +3725,10 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         });
       }
       gs.bullets = []; gs.enemyBullets = [];
-      if (gs.lives <= 0) gs.status = 'gameover';
-      else {
+      if (gs.lives <= 0) {
+          gs.status = 'gameover';
+          window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Over' }));
+      } else {
         gs.status = 'respawning'; gs.respawnTimer = 120;
         gs.player.x = NATIVE_W / 2; gs.player.y = NATIVE_H - 80; gs.player.cooldown = 0;
       }
@@ -3755,11 +3757,16 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         gs.bullets = []; gs.enemyBullets = []; gs.enemies = []; gs.powerups = []; gs.particles = []; gs.boss = null;
         initMap(gs);
         showMessage(gs, THEMES[0].name);
+        window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Play' }));
       }
 
-      if (gs.status === 'gameover' && keys['Enter']) gs.status = 'start';
+      if (gs.status === 'gameover' && keys['Enter']) {
+        gs.status = 'start';
+        window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Start' }));
+      }
 
-      if (gs.status === 'playing' || gs.status === 'respawning') {
+      // Keep scrolling and animating particles even on gameover so the explosion finishes
+      if (gs.status === 'playing' || gs.status === 'respawning' || gs.status === 'gameover') {
         gs.bgScrollY += 0.8;
         for (let i = gs.islands.length - 1; i >= 0; i--) {
           gs.islands[i].y += 0.8;
@@ -3799,7 +3806,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
            else {
              gs.level++; gs.levelTick = 0; gs.bombs++;
              showMessage(gs, THEMES[(gs.level-1)%4].name);
-             initMap(gs); // Swap palettes
+             initMap(gs); 
            }
         }
       }
@@ -3829,18 +3836,20 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
           p.cooldown = Math.max(6, 12 - wLvl*2);
           playAudio('shoot');
         } else if (gs.weapon === 'increase') {
-          for(let i=0; i<=wLvl; i++) {
+          let count = Math.min(3, wLvl);
+          for(let i=0; i<=count; i++) {
             gs.bullets.push({ x: p.x - 6 + (i*6), y: p.y - 15 - (i%2*5), vx: 0, vy: -16, w: 4, h: 16, type: 'bullet' });
             gs.bullets.push({ x: p.x - 6 - (i*6), y: p.y - 15 - (i%2*5), vx: 0, vy: -16, w: 4, h: 16, type: 'bullet' });
           }
           p.cooldown = 8; playAudio('shoot');
+        } else if (gs.weapon === '3gun') {
+          gs.bullets.push({ x: p.x - 2, y: p.y - 15, vx: 0, vy: -14, w: 4+wLvl, h: 14, type: 'bullet' });
+          gs.bullets.push({ x: p.x - 2, y: p.y - 15, vx: -2 - wLvl, vy: -13, w: 4+wLvl, h: 14, type: 'bullet' });
+          gs.bullets.push({ x: p.x - 2, y: p.y - 15, vx: 2 + wLvl, vy: -13, w: 4+wLvl, h: 14, type: 'bullet' });
+          p.cooldown = 12; playAudio('shoot');
         } else if (gs.weapon === 'spread') {
-          gs.bullets.push({ x: p.x, y: p.y - 15, vx: 0, vy: -12, w: 4, h: 12, type: 'bullet' });
-          gs.bullets.push({ x: p.x, y: p.y - 15, vx: -3, vy: -11, w: 4, h: 12, type: 'bullet' });
-          gs.bullets.push({ x: p.x, y: p.y - 15, vx: 3, vy: -11, w: 4, h: 12, type: 'bullet' });
-          if (wLvl >= 2) {
-            gs.bullets.push({ x: p.x, y: p.y - 15, vx: -6, vy: -10, w: 4, h: 12, type: 'bullet' });
-            gs.bullets.push({ x: p.x, y: p.y - 15, vx: 6, vy: -10, w: 4, h: 12, type: 'bullet' });
+          for(let i=-2; i<=2; i++) {
+            gs.bullets.push({ x: p.x - 2, y: p.y - 15, vx: i * (2 + wLvl*0.5), vy: -11, w: 4, h: 12, type: 'bullet' });
           }
           p.cooldown = 14; playAudio('shoot');
         } else if (gs.weapon === 'missile') {
@@ -3895,7 +3904,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
           let startX = 30 + Math.random() * (NATIVE_W - 60);
           
           if (rand < 0.4) {
-            // TINY SQUADRON (Fast, V-formation, leader shoots)
+            // TINY SQUADRON
             let count = Math.random() > 0.5 ? 5 : 3;
             for(let i=0; i<count; i++) {
               let offsetX = (i - Math.floor(count/2)) * 30;
@@ -3903,13 +3912,10 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
               gs.enemies.push({ tier: 'basic', class: 'tiny', x: startX + offsetX, y: -30 + offsetY, hp: 1, pts: 20, tick: 0, startX: startX + offsetX, isLeader: i === Math.floor(count/2) });
             }
           } else if (rand < 0.7) {
-            // SLOW FIGHTER
             gs.enemies.push({ tier: 'basic', class: 'fighter', x: startX, y: -30, hp: 2, pts: 50, tick: 0, startX: startX });
           } else if (rand < 0.9) {
-            // BOMBER
             gs.enemies.push({ tier: 'heavy', class: 'bomber', x: startX, y: -40, hp: 8, pts: 150, tick: 0, startX: startX });
           } else {
-            // BOAT
             gs.enemies.push({ tier: 'medium', class: 'boat', x: Math.random() > 0.5 ? -30 : NATIVE_W + 30, y: 80 + Math.random() * 200, hp: 5, pts: 200, tick: 0, dir: Math.random() > 0.5 ? 1 : -1 });
           }
         }
@@ -3931,11 +3937,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
              for(let i=-2; i<=2; i++) fireEnemyBullet(gs, b.x, b.y + 30, 4, i * 0.2);
           }
         }
-        
-        // Boss Player Collision
-        if (p.invuln <= 0 && Math.hypot(b.x - p.x, b.y - p.y) < b.w/2) {
-           playerHit(gs);
-        }
+        if (p.invuln <= 0 && Math.hypot(b.x - p.x, b.y - p.y) < b.w/2) playerHit(gs);
       }
 
       // Enemy Logic
@@ -3986,7 +3988,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
                  gs.status = 'levelcleared';
                  gs.level++; gs.levelTick = 0;
                  showMessage(gs, "BOSS DESTROYED");
-                 setTimeout(() => initMap(gs), 3000); // Swap palettes after pause
+                 setTimeout(() => { initMap(gs); gs.bombs++; showMessage(gs, THEMES[(gs.level-1)%4].name); gs.status = 'playing'; }, 3000); 
               }
            }
         }
