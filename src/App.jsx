@@ -4144,14 +4144,14 @@ const playerHit = (gs) => {
       }
     };
 
-    const loop = () => {
+const loop = () => {
       update(); draw();
       animationFrameId = requestAnimationFrame(loop);
     };
     loop();
 
     return () => cancelAnimationFrame(animationFrameId);
-  }, [audioCtx, onMenu]);
+  }, [audioCtx, onMenu]); // <--- FIX: ADDED DEPENDENCY ARRAY AND CLOSING PARENTHESIS
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-auto bg-transparent p-6 md:p-12">
