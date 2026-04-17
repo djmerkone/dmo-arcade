@@ -3780,8 +3780,8 @@ if (gs.status === 'start' && keys['Enter']) {
          }
       }
 
-      // Environment Engine
-      if (gs.status === 'playing' || gs.status === 'respawning' || gs.status === 'level_transition') {
+    // Environment Engine
+      if (gs.status === 'playing' || gs.status === 'respawning' || gs.status === 'level_transition' || gs.status === 'gameover') {
         gs.bgScrollY += 0.8;
         for (let i = gs.islands.length - 1; i >= 0; i--) {
           gs.islands[i].y += 0.8;
@@ -4160,10 +4160,26 @@ const draw = () => {
         ctx.fillText(gs.messageText, NATIVE_W/2, NATIVE_H/2 - 50);
       }
 
-      if (gs.status === 'gameover') {
-        ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0,0,NATIVE_W,NATIVE_H);
-        ctx.fillStyle = '#f00'; ctx.textAlign = 'center'; ctx.font = '50px "VT323", monospace'; ctx.fillText("MISSION FAILED", NATIVE_W/2, NATIVE_H/2 - 10);
-        ctx.fillStyle = '#fff'; ctx.font = '24px "VT323", monospace'; ctx.fillText("PRESS ENTER TO RESTART", NATIVE_W/2, NATIVE_H/2 + 30);
+if (gs.status === 'gameover') {
+        ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(0,0,NATIVE_W,NATIVE_H);
+        ctx.fillStyle = '#f00'; ctx.textAlign = 'center'; ctx.font = '50px "VT323", monospace'; 
+        ctx.fillText("MISSION FAILED", NATIVE_W/2, 100);
+        
+        ctx.fillStyle = '#aaa'; ctx.font = '20px "VT323", monospace'; 
+        ctx.fillText("WITH OUR DEFENSES CRUSHED, THE CYBORG FLEET", NATIVE_W/2, 160);
+        ctx.fillText("SWARMED ACROSS THE GLOBE. EARTH'S CITIES", NATIVE_W/2, 185);
+        ctx.fillText("WERE ASSIMILATED INTO THEIR COLD, MACHINE EMPIRE.", NATIVE_W/2, 210);
+        ctx.fillText("HUMANITY'S FINAL HOPE WAS EXTINGUISHED...", NATIVE_W/2, 235);
+
+        let contText = gs.continues > 0 ? `CONTINUE? (${gs.continues} CREDITS)` : "NO CREDITS REMAINING";
+        let contColor = gs.continues > 0 ? (gs.gameOverOpt === 0 ? '#ff0' : '#fff') : '#555';
+        let quitColor = gs.gameOverOpt === 1 ? '#ff0' : '#fff';
+
+        ctx.fillStyle = contColor; ctx.font = (gs.gameOverOpt === 0 && gs.continues > 0) ? '30px "VT323", monospace' : '24px "VT323", monospace';
+        ctx.fillText((gs.gameOverOpt === 0 && gs.continues > 0 ? "> " : "") + contText + (gs.gameOverOpt === 0 && gs.continues > 0 ? " <" : ""), NATIVE_W/2, 330);
+        
+        ctx.fillStyle = quitColor; ctx.font = gs.gameOverOpt === 1 ? '30px "VT323", monospace' : '24px "VT323", monospace';
+        ctx.fillText((gs.gameOverOpt === 1 ? "> " : "") + "QUIT TO MENU" + (gs.gameOverOpt === 1 ? " <" : ""), NATIVE_W/2, 380);
       }
       
       if (gs.status === 'ending') {
