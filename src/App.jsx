@@ -3532,12 +3532,12 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       ".GGGGGGGGGGGGG.", ".G.G..GDG..G.G.", "D..G.......G..D",
       "...GG.....GG..."
     ],
-    fighter: [ // Old fighter, now slow/medium
+    fighter: [
       ".......D.......", ".......Y.......", "......YYY......",
       "....YYYYYYY....", "..YYYYYYYYYYY..", ".Y.Y.YYYYY.Y.Y.",
       ".....Y.R.Y.....", "......YYY......", ".......Y......."
     ],
-    tinyFighter: [ // Fast interceptors
+    tinyFighter: [
       "...D...", "..YYY..", ".Y.R.Y.", "...Y..."
     ],
     bomber: [
@@ -3552,7 +3552,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       "...GGGGG...", "...GGOGG...", "...GGGGG...", "...GGGGG...",
       "....GGG....", "...W...W...", "..W.....W.." 
     ],
-    boss: [ // Massive End-Level Boss
+    boss: [
       ".............D.............",
       "............RRR............",
       "...........RRRRR...........",
@@ -3587,7 +3587,6 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
     const ctx = canvas.getContext('2d');
     let animationFrameId;
 
-    // --- AUDIO SYSTEM ---
     const playAudio = (type) => {
       if (!audioCtx || audioCtx.state !== 'running') return;
       const t = audioCtx.currentTime;
@@ -3655,7 +3654,6 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
 
     const formatScore = (s) => String(s).padStart(6, '0');
 
-    // --- GAME LOGIC HANDLERS ---
     const addScore = (gs, pts) => {
       gs.score += pts;
       if (gs.score > gs.highScore) gs.highScore = gs.score;
@@ -3683,11 +3681,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       gs.bombs--;
       playAudio('bomb');
       gs.enemyBullets = [];
-      
-      // Screen flash effect via particles
       gs.particles.push({x: NATIVE_W/2, y: NATIVE_H/2, life: 30, isFlash: true});
-      
-      // Destroy normal enemies
       for (let i = gs.enemies.length - 1; i >= 0; i--) {
         let e = gs.enemies[i];
         addScore(gs, e.pts);
@@ -3696,11 +3690,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         }
         gs.enemies.splice(i, 1);
       }
-      
-      // Damage Boss
-      if (gs.boss && gs.boss.state === 'fighting') {
-        gs.boss.hp -= gs.boss.maxHp * 0.1;
-      }
+      if (gs.boss && gs.boss.state === 'fighting') gs.boss.hp -= gs.boss.maxHp * 0.1;
     };
 
     const fireEnemyBullet = (gs, ex, ey, speed, spread = 0) => {
@@ -3713,10 +3703,10 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       });
     };
 
-const playerHit = (gs) => {
+    const playerHit = (gs) => {
       gs.lives--;
       playAudio('boom');
-      gs.weaponLevel = Math.max(1, gs.weaponLevel - 1); // Lose weapon power
+      gs.weaponLevel = Math.max(1, gs.weaponLevel - 1);
       for(let k=0; k<60; k++) {
         gs.particles.push({
           x: gs.player.x, y: gs.player.y, 
@@ -3725,8 +3715,6 @@ const playerHit = (gs) => {
         });
       }
       gs.bullets = []; gs.enemyBullets = [];
-      
-      // FIX: Instantly trigger invulnerability to prevent multi-frame deaths!
       gs.player.invuln = 120; 
 
       if (gs.lives <= 0) {
@@ -3737,6 +3725,7 @@ const playerHit = (gs) => {
         gs.player.x = NATIVE_W / 2; gs.player.y = NATIVE_H - 80; gs.player.cooldown = 0;
       }
     };
+
     const spawnBoss = (gs) => {
       gs.boss = {
         x: NATIVE_W/2, y: -100, w: 90, h: 45, 
@@ -3746,7 +3735,6 @@ const playerHit = (gs) => {
       showMessage(gs, "WARNING: HEAVY BOMBER APPROACHING");
     };
 
-    // --- CORE LOOP ---
     const update = () => {
       let gs = state.current;
       let keys = gs.keys;
@@ -3768,7 +3756,6 @@ const playerHit = (gs) => {
         window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Start' }));
       }
 
-      // Keep scrolling and animating particles even on gameover so the explosion finishes
       if (gs.status === 'playing' || gs.status === 'respawning' || gs.status === 'gameover') {
         gs.bgScrollY += 0.8;
         for (let i = gs.islands.length - 1; i >= 0; i--) {
@@ -3798,7 +3785,6 @@ const playerHit = (gs) => {
       gs.levelTick++;
       let p = gs.player;
 
-      // LEVEL PROGRESSION
       const MAX_TICK = 3000;
       if (!gs.boss) {
         if (gs.levelTick === Math.floor(MAX_TICK * 0.4) || gs.levelTick === Math.floor(MAX_TICK * 0.8)) {
@@ -3824,13 +3810,11 @@ const playerHit = (gs) => {
       p.x = Math.max(20, Math.min(NATIVE_W - 20, p.x));
       p.y = Math.max(20, Math.min(NATIVE_H - 20, p.y));
 
-      // SMART BOMB
       if ((keys['Shift'] || keys['e']) && gs.bombs > 0 && p.cooldown <= 0) {
          triggerBomb(gs);
          p.cooldown = 60;
       }
 
-      // PLAYER SHOOTING
       if (keys[' '] && p.cooldown <= 0) {
         let wLvl = Math.min(3, gs.weaponLevel);
         if (gs.weapon === 'twin') {
@@ -3865,14 +3849,12 @@ const playerHit = (gs) => {
         }
       }
 
-      // Update Player Bullets
       for (let i = gs.bullets.length - 1; i >= 0; i--) {
         let b = gs.bullets[i];
         b.x += b.vx; b.y += b.vy;
         if (b.y < -40) gs.bullets.splice(i, 1);
       }
 
-      // Update Powerups
       for (let i = gs.powerups.length - 1; i >= 0; i--) {
         let pu = gs.powerups[i];
         pu.y += pu.vy;
@@ -3887,7 +3869,6 @@ const playerHit = (gs) => {
         if (pu.y > NATIVE_H + 20) gs.powerups.splice(i, 1);
       }
 
-      // Update Enemy Bullets
       for (let i = gs.enemyBullets.length - 1; i >= 0; i--) {
         let eb = gs.enemyBullets[i];
         eb.x += eb.vx; eb.y += eb.vy;
@@ -3899,7 +3880,6 @@ const playerHit = (gs) => {
         }
       }
 
-      // Enemy Spawning (Stops if Boss is present or approaching)
       if (!gs.boss && gs.levelTick < MAX_TICK - 100) {
         let spawnRate = Math.max(20, 70 - (gs.level * 3));
         if (gs.tick % spawnRate === 0) {
@@ -3907,7 +3887,6 @@ const playerHit = (gs) => {
           let startX = 30 + Math.random() * (NATIVE_W - 60);
           
           if (rand < 0.4) {
-            // TINY SQUADRON
             let count = Math.random() > 0.5 ? 5 : 3;
             for(let i=0; i<count; i++) {
               let offsetX = (i - Math.floor(count/2)) * 30;
@@ -3924,7 +3903,6 @@ const playerHit = (gs) => {
         }
       }
 
-      // Boss Logic
       if (gs.boss) {
         let b = gs.boss;
         b.tick++;
@@ -3943,7 +3921,6 @@ const playerHit = (gs) => {
         if (p.invuln <= 0 && Math.hypot(b.x - p.x, b.y - p.y) < b.w/2) playerHit(gs);
       }
 
-      // Enemy Logic
       for (let i = gs.enemies.length - 1; i >= 0; i--) {
         let e = gs.enemies[i];
         e.tick++;
@@ -3971,12 +3948,10 @@ const playerHit = (gs) => {
         }
       }
 
-// General Bullet Collision Processing
       for (let j = gs.bullets.length - 1; j >= 0; j--) {
         let b = gs.bullets[j];
         let bulletHit = false;
 
-        // Check Boss
         if (gs.boss && gs.boss.state === 'fighting') {
            if (Math.abs(b.x - gs.boss.x) < gs.boss.w/2 && Math.abs(b.y - gs.boss.y) < gs.boss.h/2) {
               gs.boss.hp -= (b.type === 'missile' ? 5 : (b.type === 'laser' ? 2 : 1));
@@ -3996,7 +3971,6 @@ const playerHit = (gs) => {
            }
         }
 
-        // Check Normal Enemies
         if (!bulletHit) {
           for (let i = gs.enemies.length - 1; i >= 0; i--) {
             let e = gs.enemies[i];
@@ -4005,7 +3979,7 @@ const playerHit = (gs) => {
               e.hp -= (b.type === 'missile' ? 5 : (b.type === 'laser' ? 2 : 1));
               bulletHit = true;
               
-              if (b.type === 'missile') { // Splash damage
+              if (b.type === 'missile') { 
                  playAudio('boom');
                  gs.particles.push({x: b.x, y: b.y, life: 15, isFlash: true, color: 'rgba(255,100,0,0.5)'});
                  gs.enemies.forEach(ex => { if(Math.hypot(ex.x - b.x, ex.y - b.y) < 60) ex.hp -= 3; });
@@ -4021,7 +3995,6 @@ const playerHit = (gs) => {
         if (bulletHit && b.type !== 'laser') gs.bullets.splice(j, 1);
       }
 
-      // FIX: Process enemy deaths from this frame (MOVED OUTSIDE THE BULLET LOOP)
       for (let i = gs.enemies.length - 1; i >= 0; i--) {
           let e = gs.enemies[i];
           if (e.hp <= 0) {
@@ -4032,7 +4005,6 @@ const playerHit = (gs) => {
               gs.particles.push({ x: e.x + (Math.random()-0.5)*10, y: e.y + (Math.random()-0.5)*10, vx: (Math.random()-0.5)*5, vy: (Math.random()-0.5)*5, life: 20 + Math.random()*25, color: Math.random() > 0.5 ? '#f00' : '#ffaa00' });
             }
             
-            // Drop Logic
             gs.kills[e.tier]++;
             if ((e.tier === 'basic' && gs.kills.basic >= 15) || 
                 (e.tier === 'medium' && gs.kills.medium >= 5) || 
@@ -4043,12 +4015,8 @@ const playerHit = (gs) => {
             gs.enemies.splice(i, 1);
           }
       }
-
-        if (bulletHit && b.type !== 'laser') gs.bullets.splice(j, 1);
-      }
     };
 
-    // --- RENDER ENGINE ---
     const draw = () => {
       let gs = state.current;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -4122,7 +4090,6 @@ const playerHit = (gs) => {
       ctx.fillStyle = '#fff'; ctx.font = '24px "VT323", monospace'; ctx.textAlign = 'left';
       ctx.fillText(`SCORE: ${formatScore(gs.score)}`, 10, 25);
       
-      // Draw Bombs
       for(let i=0; i<gs.bombs; i++) {
         ctx.fillStyle = '#f00'; ctx.beginPath(); ctx.arc(10 + i*15, 45, 5, 0, Math.PI*2); ctx.fill();
       }
@@ -4144,14 +4111,14 @@ const playerHit = (gs) => {
       }
     };
 
-const loop = () => {
+    const loop = () => {
       update(); draw();
       animationFrameId = requestAnimationFrame(loop);
     };
     loop();
 
     return () => cancelAnimationFrame(animationFrameId);
-  }, [audioCtx, onMenu]); // <--- FIX: ADDED DEPENDENCY ARRAY AND CLOSING PARENTHESIS
+  }, [audioCtx, onMenu]); 
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-auto bg-transparent p-6 md:p-12">
