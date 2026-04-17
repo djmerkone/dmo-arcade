@@ -3477,32 +3477,69 @@ const GalagaGame = ({ audioCtx, onMenu }) => {
 const AirplaneGame = ({ audioCtx, onMenu }) => {
   const canvasRef = useRef(null);
 
-  // Full 4:3 Arcade Resolution
   const NATIVE_W = 640;
   const NATIVE_H = 480;
+  const MAX_TICK = 2500; // Duration of a sub-level
 
   const state = useRef({
     status: 'start',
     score: 0,
     highScore: 0,
     lives: 3,
-    level: 1,
+    nextLifeScore: 50000,
+    world: 0,
+    subLevel: 0,
+    loopMult: 1, // Speeds up on "Play Again"
+    levelTick: 0,
     tick: 0,
     bgScrollY: 0,
     islands: [],
-    respawnTimer: 0, 
+    respawnTimer: 0,
+    transitionTimer: 0,
+    messageTimer: 0,
+    messageText: '',
+    
+    bombs: 3,
+    weapon: 'twin', 
+    weaponLevel: 1,
+    satellites: [], // Orbital helpers
+    
+    kills: { tiny: 0, fighter: 0, boat: 0, bomber: 0 },
+    
     player: { x: 320, y: 400, w: 45, h: 30, speed: 5, cooldown: 0, invuln: 0 },
     bullets: [],
     enemyBullets: [],
     enemies: [],
+    powerups: [],
     particles: [],
+    weatherParticles: [],
+    boss: null,
     keys: {}
   });
 
-  // --- NES-Style Pixel Art Dictionaries ---
+  const WORLDS = [
+    { name: "HAWAIIAN ISLANDS", water: '#0044aa', sand: '#ddcc88', jungle: '#228822', weather: 'clear' },
+    { name: "CALIFORNIA COAST", water: '#0055aa', sand: '#ccbb77', jungle: '#33aa33', weather: 'clear' },
+    { name: "SNOWY MOUNTAINS", water: '#446677', sand: '#eeeeff', jungle: '#ffffff', weather: 'snow' },
+    { name: "SAHARA DESERT", water: '#ccaa55', sand: '#ddbb66', jungle: '#aa8844', weather: 'sandstorm' },
+    { name: "OVER THE ATLANTIC", water: '#002266', sand: '#002266', jungle: '#002266', weather: 'clear' },
+    { name: "S.A. JUNGLES", water: '#004422', sand: '#445522', jungle: '#115511', weather: 'rain' },
+    { name: "INDUSTRIAL CITY", water: '#333333', sand: '#555555', jungle: '#444444', weather: 'clear' },
+    { name: "THE GRAND CANYON", water: '#aa4422', sand: '#cc5522', jungle: '#883311', weather: 'clear' }
+  ];
+
+  const TIMES = [
+    { name: "SUNRISE", tint: 'rgba(255, 100, 0, 0.2)' },
+    { name: "NOON", tint: 'rgba(0, 0, 0, 0)' },
+    { name: "EVENING", tint: 'rgba(200, 50, 50, 0.3)' },
+    { name: "NIGHT", tint: 'rgba(0, 0, 50, 0.6)' },
+    { name: "BOSS ENGAGEMENT", tint: 'rgba(50, 0, 0, 0.4)' }
+  ];
+
   const PALETTE = {
     'R': '#e52521', 'G': '#a0a0a0', 'D': '#505050', 'B': '#185add',
-    'Y': '#e5c721', 'O': '#335522', 'W': '#ffffff', 'X': '#ffaa00'
+    'Y': '#e5c721', 'O': '#335522', 'W': '#ffffff', 'X': '#ffaa00',
+    'P': '#ff00ff', 'C': '#00ffff'
   };
 
   const SPRITES = {
@@ -3517,6 +3554,9 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       "....YYYYYYY....", "..YYYYYYYYYYY..", ".Y.Y.YYYYY.Y.Y.",
       ".....Y.R.Y.....", "......YYY......", ".......Y......."
     ],
+    tinyFighter: [
+      "...D...", "..YYY..", ".Y.R.Y.", "...Y..."
+    ],
     bomber: [
       ".........D.........", "........OOO........", ".......OOOOO.......",
       "......OOOOOOO......", "...D..OOOOOOO..D...", "...O..OOOOOOO..O...",
@@ -3528,6 +3568,16 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       ".....D.....", "....GGG....", "...GGGGG...", "...GGGGG...",
       "...GGGGG...", "...GGOGG...", "...GGGGG...", "...GGGGG...",
       "....GGG....", "...W...W...", "..W.....W.." 
+    ],
+    satellite: [
+      ".B.", "BBB", ".B."
+    ],
+    boss: [
+      ".............D.............", "............RRR............", "...........RRRRR...........",
+      "........D..RRRRR..D........", ".......RR.RRRRRRR.RR.......", "......RRRRRRRRRRRRRRR......",
+      ".....RRRRRRR.B.RRRRRRR.....", "....RRRRRRRRRRRRRRRRRRR....", "...RR.RR.RRRRRRRRR.RR.RR...",
+      ".RRRRRRRRRRRRRRRRRRRRRRRRR.", "RRRRRRRRRRRRRRRRRRRRRRRRRRR", "R.R.R.R.RRRRRRRRRRR.R.R.R.R",
+      "..........RRRRRRR..........", "...........RR.RR...........", "...........R...R..........."
     ]
   };
 
@@ -3536,10 +3586,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
     const handleKeyUp = e => { state.current.keys[e.key] = false; };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
+    return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
   }, []);
 
   useEffect(() => {
@@ -3547,45 +3594,42 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
     const ctx = canvas.getContext('2d');
     let animationFrameId;
 
-    // --- AUDIO SYSTEM ---
     const playAudio = (type) => {
       if (!audioCtx || audioCtx.state !== 'running') return;
       const t = audioCtx.currentTime;
       if (type === 'shoot') {
-        let osc = audioCtx.createOscillator(); osc.type = 'square';
-        osc.frequency.setValueAtTime(1200, t); osc.frequency.exponentialRampToValueAtTime(400, t + 0.1);
-        let gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.05, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+        let osc = audioCtx.createOscillator(); osc.type = 'square'; osc.frequency.setValueAtTime(1200, t); osc.frequency.exponentialRampToValueAtTime(400, t + 0.1);
+        let gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.04, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
         osc.connect(gain).connect(audioCtx.destination); osc.start(t); osc.stop(t + 0.1);
+      } else if (type === 'laser') {
+        let osc = audioCtx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(800, t); osc.frequency.linearRampToValueAtTime(1000, t + 0.15);
+        let gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.03, t); gain.gain.linearRampToValueAtTime(0.001, t + 0.15);
+        osc.connect(gain).connect(audioCtx.destination); osc.start(t); osc.stop(t + 0.15);
       } else if (type === 'hit') {
-        let buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.2, audioCtx.sampleRate);
-        let data = buf.getChannelData(0); for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-        let src = audioCtx.createBufferSource(); src.buffer = buf;
-        let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 800;
-        let gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.15, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
-        src.connect(filter).connect(gain).connect(audioCtx.destination); src.start(t);
-      } else if (type === 'boom') {
-        let buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.4, audioCtx.sampleRate);
-        let data = buf.getChannelData(0); for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-        let src = audioCtx.createBufferSource(); src.buffer = buf;
-        let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 400;
-        let gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.4, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.6);
-        src.connect(filter).connect(gain).connect(audioCtx.destination); src.start(t);
+        let buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.2, audioCtx.sampleRate); let data = buf.getChannelData(0); for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+        let src = audioCtx.createBufferSource(); src.buffer = buf; let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 800;
+        let gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.1, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2); src.connect(filter).connect(gain).connect(audioCtx.destination); src.start(t);
+      } else if (type === 'boom' || type === 'bomb') {
+        let len = type === 'bomb' ? 1.5 : 0.6;
+        let buf = audioCtx.createBuffer(1, audioCtx.sampleRate * len, audioCtx.sampleRate); let data = buf.getChannelData(0); for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+        let src = audioCtx.createBufferSource(); src.buffer = buf; let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = type === 'bomb' ? 200 : 400;
+        let gain = audioCtx.createGain(); gain.gain.setValueAtTime(type === 'bomb' ? 0.6 : 0.3, t); gain.gain.exponentialRampToValueAtTime(0.01, t + len); src.connect(filter).connect(gain).connect(audioCtx.destination); src.start(t);
+      } else if (type === 'powerup') {
+        [400, 600, 800, 1000].forEach((f, i) => {
+           let osc = audioCtx.createOscillator(); osc.type = 'square'; osc.frequency.value = f;
+           let gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.1, t + i*0.05); gain.gain.linearRampToValueAtTime(0, t + i*0.05 + 0.05); osc.connect(gain).connect(audioCtx.destination); osc.start(t + i*0.05); osc.stop(t + i*0.05 + 0.05);
+        });
       }
     };
 
     const generateIsland = (yOffset) => {
-      let shapes = [];
-      let numShapes = 4 + Math.floor(Math.random() * 5);
-      let baseX = Math.random() * NATIVE_W;
-      for(let i=0; i<numShapes; i++) {
-        shapes.push({ ox: (Math.random() - 0.5) * 100, oy: (Math.random() - 0.5) * 100, r: 40 + Math.random() * 50 });
-      }
+      let shapes = []; let numShapes = 4 + Math.floor(Math.random() * 5); let baseX = Math.random() * NATIVE_W;
+      for(let i=0; i<numShapes; i++) shapes.push({ ox: (Math.random() - 0.5) * 100, oy: (Math.random() - 0.5) * 100, r: 40 + Math.random() * 50 });
       return { x: baseX, y: yOffset, shapes };
     };
 
     const initMap = (gs) => {
-      gs.islands = [];
-      for(let i=0; i<5; i++) gs.islands.push(generateIsland(-i * 250));
+      gs.islands = []; for(let i=0; i<6; i++) gs.islands.push(generateIsland(-i * 200));
     };
 
     const drawSprite = (spriteObj, x, y, scale = 3, isShadow = false) => {
@@ -3593,8 +3637,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       let startX = x - w / 2; let startY = y - h / 2;
       for (let r = 0; r < spriteObj.length; r++) {
         for (let c = 0; c < spriteObj[r].length; c++) {
-          let char = spriteObj[r][c];
-          if (char === '.') continue;
+          let char = spriteObj[r][c]; if (char === '.') continue;
           ctx.fillStyle = isShadow ? 'rgba(0, 0, 50, 0.4)' : PALETTE[char];
           ctx.fillRect(Math.floor(startX + c * scale), Math.floor(startY + r * scale), scale, scale);
         }
@@ -3603,36 +3646,59 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
 
     const formatScore = (s) => String(s).padStart(6, '0');
 
-    // --- ENEMY BULLET & DEATH HANDLERS ---
-    const fireEnemyBullet = (gs, e, speed) => {
-      let dx = gs.player.x - e.x; let dy = gs.player.y - e.y;
-      let dist = Math.hypot(dx, dy);
-      gs.enemyBullets.push({ x: e.x, y: e.y, vx: (dx / dist) * speed, vy: (dy / dist) * speed, r: 4 });
+    const showMessage = (gs, msg) => { gs.messageText = msg; gs.messageTimer = 120; };
+
+    const addScore = (gs, pts) => {
+      gs.score += pts;
+      if (gs.score > gs.highScore) gs.highScore = gs.score;
+      if (gs.score >= gs.nextLifeScore) {
+          gs.lives++; gs.nextLifeScore += 50000; playAudio('powerup'); showMessage(gs, "1 UP!");
+      }
+    };
+
+    const spawnPowerup = (gs, x, y) => {
+      const types = ['increase', '3gun', 'spread', 'laser', 'missile', 'satellite'];
+      const type = types[Math.floor(Math.random() * types.length)];
+      gs.powerups.push({ x, y, type, vy: 1.5, w: 16, h: 16 });
+    };
+
+    const triggerBomb = (gs) => {
+      if (gs.bombs <= 0) return;
+      gs.bombs--; playAudio('bomb'); gs.enemyBullets = [];
+      gs.particles.push({x: NATIVE_W/2, y: NATIVE_H/2, life: 30, isFlash: true});
+      for (let i = gs.enemies.length - 1; i >= 0; i--) {
+        let e = gs.enemies[i]; addScore(gs, e.pts);
+        for(let k=0; k<10; k++) gs.particles.push({ x: e.x, y: e.y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 20 + Math.random()*20, color: '#ffaa00' });
+        gs.enemies.splice(i, 1);
+      }
+      if (gs.boss && gs.boss.state === 'fighting') gs.boss.hp -= gs.boss.maxHp * 0.1;
+    };
+
+    const fireEnemyBullet = (gs, ex, ey, speed, spread = 0) => {
+      let dx = gs.player.x - ex; let dy = gs.player.y - ey; let dist = Math.hypot(dx, dy); let angle = Math.atan2(dy, dx) + spread;
+      gs.enemyBullets.push({ x: ex, y: ey, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, r: 4 });
     };
 
     const playerHit = (gs) => {
-      gs.lives--;
-      playAudio('boom');
-      for(let k=0; k<60; k++) {
-        gs.particles.push({
-          x: gs.player.x, y: gs.player.y, 
-          vx: (Math.random()-0.5)*12, vy: (Math.random()-0.5)*12, 
-          life: 40 + Math.random()*40, color: Math.random() > 0.5 ? '#f00' : '#ffaa00'
-        });
-      }
-      
-      gs.bullets = [];
-      gs.enemyBullets = []; // Clears bullets to prevent immediate double-death
+      gs.lives--; playAudio('boom'); gs.weaponLevel = Math.max(1, gs.weaponLevel - 1); gs.satellites = [];
+      for(let k=0; k<60; k++) gs.particles.push({ x: gs.player.x, y: gs.player.y, vx: (Math.random()-0.5)*12, vy: (Math.random()-0.5)*12, life: 40 + Math.random()*40, color: Math.random() > 0.5 ? '#f00' : '#ffaa00' });
+      gs.bullets = []; gs.enemyBullets = []; gs.player.invuln = 120; 
 
-if (gs.lives <= 0) {
-        gs.status = 'gameover';
-        window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Over' })); // <--- ADD THIS
+      if (gs.lives <= 0) {
+          gs.status = 'gameover'; window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Over' }));
       } else {
-        gs.status = 'respawning';
-        gs.respawnTimer = 120;
-        gs.player.x = NATIVE_W / 2; gs.player.y = NATIVE_H - 80;
-        gs.player.cooldown = 0;
+        gs.status = 'respawning'; gs.respawnTimer = 120;
+        gs.player.x = NATIVE_W / 2; gs.player.y = NATIVE_H - 80; gs.player.cooldown = 0;
       }
+    };
+
+    const spawnBoss = (gs) => {
+      gs.boss = {
+        x: NATIVE_W/2, y: -100, w: 90, h: 45, 
+        maxHp: 1000 * (gs.world + 1) * gs.loopMult, hp: 1000 * (gs.world + 1) * gs.loopMult,
+        state: 'entering', tick: 0, pts: 10000
+      };
+      showMessage(gs, "WARNING: SECTOR BOSS APPROACHING");
     };
 
     // --- CORE LOOP ---
@@ -3642,47 +3708,86 @@ if (gs.lives <= 0) {
 
       if (keys['m'] || keys['M']) { onMenu(); return; }
 
-if (gs.status === 'start' && keys['Enter']) {
-        gs.status = 'playing'; gs.score = 0; gs.lives = 3; gs.level = 1;
+      if (gs.status === 'start' && keys['Enter']) {
+        gs.status = 'playing'; gs.score = 0; gs.lives = 3; gs.world = 0; gs.subLevel = 0; gs.loopMult = 1;
+        gs.bombs = 3; gs.weapon = 'twin'; gs.weaponLevel = 1; gs.satellites = [];
         gs.player = { x: NATIVE_W/2, y: NATIVE_H - 80, w: 45, h: 30, speed: 5, cooldown: 0, invuln: 120 };
-        gs.bullets = []; gs.enemyBullets = []; gs.enemies = []; gs.particles = [];
+        gs.bullets = []; gs.enemyBullets = []; gs.enemies = []; gs.powerups = []; gs.particles = []; gs.boss = null; gs.levelTick = 0;
         initMap(gs);
-        window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Play' })); // <--- ADD THIS
+        showMessage(gs, `${WORLDS[gs.world].name} - ${TIMES[gs.subLevel].name}`);
+        window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Play' }));
       }
 
-      if (gs.status === 'gameover' && keys['Enter']) {
-        gs.status = 'start';
-        window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Start' })); // <--- ADD THIS
+      if ((gs.status === 'gameover' || gs.status === 'ending') && keys['Enter']) {
+        if (gs.status === 'ending') {
+            gs.world = 0; gs.subLevel = 0; gs.loopMult += 0.5; gs.status = 'playing'; gs.boss = null; gs.levelTick = 0;
+            initMap(gs); showMessage(gs, "HARD MODE INITIATED");
+            window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Play' }));
+        } else {
+            gs.status = 'start'; window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Start' }));
+        }
       }
 
-      if (gs.status === 'playing' || gs.status === 'respawning') {
+      // Environment Engine
+      if (gs.status === 'playing' || gs.status === 'respawning' || gs.status === 'level_transition') {
         gs.bgScrollY += 0.8;
         for (let i = gs.islands.length - 1; i >= 0; i--) {
           gs.islands[i].y += 0.8;
-          if (gs.islands[i].y > NATIVE_H + 150) {
-            gs.islands.splice(i, 1); gs.islands.push(generateIsland(-150)); 
-          }
+          if (gs.islands[i].y > NATIVE_H + 150) { gs.islands.splice(i, 1); gs.islands.push(generateIsland(-150)); }
         }
         for (let i = gs.particles.length - 1; i >= 0; i--) {
-          let pt = gs.particles[i];
-          pt.x += pt.vx; pt.y += pt.vy; pt.life--;
-          if (pt.life <= 0) gs.particles.splice(i, 1);
+          let pt = gs.particles[i]; if (!pt.isFlash) { pt.x += pt.vx; pt.y += pt.vy; }
+          pt.life--; if (pt.life <= 0) gs.particles.splice(i, 1);
         }
+        if (gs.messageTimer > 0) gs.messageTimer--;
+        
+        // Dynamic Weather Particles
+        let wth = WORLDS[gs.world].weather;
+        if (wth === 'rain') {
+            if (Math.random() < 0.3) gs.weatherParticles.push({x: Math.random()*NATIVE_W, y: -10, vx: -1, vy: 15, c: '#55aaff', l: 40});
+        } else if (wth === 'snow') {
+            if (Math.random() < 0.1) gs.weatherParticles.push({x: Math.random()*NATIVE_W, y: -10, vx: (Math.random()-0.5)*2, vy: 2+Math.random()*2, c: '#ffffff', l: 200});
+        } else if (wth === 'sandstorm') {
+            if (Math.random() < 0.4) gs.weatherParticles.push({x: NATIVE_W + 10, y: Math.random()*NATIVE_H, vx: -15, vy: 2, c: '#ddaa55', l: 60});
+        }
+        for (let i=gs.weatherParticles.length-1; i>=0; i--) {
+            let wp = gs.weatherParticles[i]; wp.x += wp.vx; wp.y += wp.vy; wp.l--;
+            if (wp.l <= 0) gs.weatherParticles.splice(i, 1);
+        }
+      }
+
+      if (gs.status === 'level_transition') {
+        gs.transitionTimer--; gs.player.y -= 4; gs.player.invuln = 10;
+        gs.enemies = []; gs.enemyBullets = []; gs.powerups = [];
+        if (gs.transitionTimer <= 0) {
+           gs.subLevel++; gs.levelTick = 0; gs.bombs++;
+           if (gs.subLevel >= 5) { gs.world++; gs.subLevel = 0; }
+           if (gs.world >= 8) { gs.status = 'ending'; return; }
+           initMap(gs); gs.player.x = NATIVE_W/2; gs.player.y = NATIVE_H - 80;
+           showMessage(gs, `${WORLDS[gs.world].name} - ${TIMES[gs.subLevel].name}`);
+           gs.status = 'playing';
+        }
+        return; 
       }
 
       if (gs.status === 'respawning') {
         gs.respawnTimer--;
-        if (gs.respawnTimer <= 0) {
-          gs.status = 'playing';
-          gs.player.invuln = 120; 
-        }
+        if (gs.respawnTimer <= 0) { gs.status = 'playing'; gs.player.invuln = 120; }
         return; 
       }
 
       if (gs.status !== 'playing') return;
 
-      gs.tick++;
-      let p = gs.player;
+      gs.tick++; gs.levelTick++; let p = gs.player;
+
+      // LEVEL PROGRESSION TRIGGER
+      if (!gs.boss) {
+        if (gs.levelTick === Math.floor(MAX_TICK * 0.4) || gs.levelTick === Math.floor(MAX_TICK * 0.8)) spawnPowerup(gs, 50 + Math.random()*(NATIVE_W-100), -20);
+        if (gs.levelTick >= MAX_TICK) {
+           if (gs.subLevel === 4) spawnBoss(gs);
+           else { gs.status = 'level_transition'; gs.transitionTimer = 200; showMessage(gs, "AREA SECURED"); }
+        }
+      }
 
       if (p.invuln > 0) p.invuln--;
       if (p.cooldown > 0) p.cooldown--;
@@ -3691,151 +3796,257 @@ if (gs.status === 'start' && keys['Enter']) {
       if (keys['ArrowRight'] || keys['d']) p.x += p.speed;
       if (keys['ArrowUp'] || keys['w']) p.y -= p.speed;
       if (keys['ArrowDown'] || keys['s']) p.y += p.speed;
+      p.x = Math.max(20, Math.min(NATIVE_W - 20, p.x)); p.y = Math.max(20, Math.min(NATIVE_H - 20, p.y));
 
-      p.x = Math.max(20, Math.min(NATIVE_W - 20, p.x));
-      p.y = Math.max(20, Math.min(NATIVE_H - 20, p.y));
+      // Satellites Orbit
+      gs.satellites.forEach((sat, i) => { sat.angle = (gs.tick * 0.05) + (i * Math.PI); });
+
+      if ((keys['Shift'] || keys['e']) && gs.bombs > 0 && p.cooldown <= 0) { triggerBomb(gs); p.cooldown = 60; }
 
       if (keys[' '] && p.cooldown <= 0) {
-        gs.bullets.push({ x: p.x - 12, y: p.y - 15, vx: 0, vy: -12, w: 3, h: 12 });
-        gs.bullets.push({ x: p.x + 9, y: p.y - 15, vx: 0, vy: -12, w: 3, h: 12 });
-        p.cooldown = 12;
-        playAudio('shoot');
+        let wLvl = Math.min(3, gs.weaponLevel);
+        if (gs.weapon === 'twin') {
+          gs.bullets.push({ x: p.x - 12, y: p.y - 15, vx: 0, vy: -12 - wLvl*2, w: 3+wLvl, h: 12+wLvl*2, type: 'bullet' });
+          gs.bullets.push({ x: p.x + 9, y: p.y - 15, vx: 0, vy: -12 - wLvl*2, w: 3+wLvl, h: 12+wLvl*2, type: 'bullet' });
+          p.cooldown = Math.max(6, 12 - wLvl*2); playAudio('shoot');
+        } else if (gs.weapon === 'increase') {
+          let count = Math.min(3, wLvl);
+          for(let i=0; i<=count; i++) {
+            gs.bullets.push({ x: p.x - 6 + (i*6), y: p.y - 15 - (i%2*5), vx: 0, vy: -16, w: 4, h: 16, type: 'bullet' });
+            gs.bullets.push({ x: p.x - 6 - (i*6), y: p.y - 15 - (i%2*5), vx: 0, vy: -16, w: 4, h: 16, type: 'bullet' });
+          }
+          p.cooldown = 8; playAudio('shoot');
+        } else if (gs.weapon === '3gun') {
+          gs.bullets.push({ x: p.x - 2, y: p.y - 15, vx: 0, vy: -14, w: 4+wLvl, h: 14, type: 'bullet' });
+          gs.bullets.push({ x: p.x - 2, y: p.y - 15, vx: -2 - wLvl, vy: -13, w: 4+wLvl, h: 14, type: 'bullet' });
+          gs.bullets.push({ x: p.x - 2, y: p.y - 15, vx: 2 + wLvl, vy: -13, w: 4+wLvl, h: 14, type: 'bullet' });
+          p.cooldown = 12; playAudio('shoot');
+        } else if (gs.weapon === 'spread') {
+          for(let i=-2; i<=2; i++) gs.bullets.push({ x: p.x - 2, y: p.y - 15, vx: i * (2 + wLvl*0.5), vy: -11, w: 4, h: 12, type: 'bullet' });
+          p.cooldown = 14; playAudio('shoot');
+        } else if (gs.weapon === 'missile') {
+          gs.bullets.push({ x: p.x - 10, y: p.y, vx: 0, vy: -6 - wLvl, w: 6, h: 16, type: 'missile' });
+          gs.bullets.push({ x: p.x + 8, y: p.y, vx: 0, vy: -6 - wLvl, w: 6, h: 16, type: 'missile' });
+          p.cooldown = 25; playAudio('boom');
+        } else if (gs.weapon === 'laser') {
+          gs.bullets.push({ x: p.x - 2, y: p.y - 40, vx: 0, vy: -30, w: 6 + wLvl*2, h: 80, type: 'laser' });
+          p.cooldown = 10; playAudio('laser');
+        }
       }
 
       for (let i = gs.bullets.length - 1; i >= 0; i--) {
-        let b = gs.bullets[i];
-        b.x += b.vx; b.y += b.vy;
-        if (b.y < -20) gs.bullets.splice(i, 1);
+        let b = gs.bullets[i]; b.x += b.vx; b.y += b.vy;
+        if (b.y < -40) gs.bullets.splice(i, 1);
+      }
+
+      for (let i = gs.powerups.length - 1; i >= 0; i--) {
+        let pu = gs.powerups[i]; pu.y += pu.vy;
+        if (Math.hypot(pu.x - p.x, pu.y - p.y) < 25) {
+           if (pu.type === 'satellite') {
+               if (gs.satellites.length < 2) gs.satellites.push({ angle: 0, hp: 2 });
+               showMessage(gs, "SATELLITE ACQUIRED");
+           } else {
+               if (gs.weapon === pu.type) gs.weaponLevel++;
+               else { gs.weapon = pu.type; gs.weaponLevel = 1; }
+               showMessage(gs, `${pu.type.toUpperCase()} LVL ${gs.weaponLevel}`);
+           }
+           addScore(gs, 500); playAudio('powerup'); gs.powerups.splice(i, 1); continue;
+        }
+        if (pu.y > NATIVE_H + 20) gs.powerups.splice(i, 1);
       }
 
       for (let i = gs.enemyBullets.length - 1; i >= 0; i--) {
-        let eb = gs.enemyBullets[i];
-        eb.x += eb.vx; eb.y += eb.vy;
-        if (eb.y > NATIVE_H + 20 || eb.x < -20 || eb.x > NATIVE_W + 20) {
-          gs.enemyBullets.splice(i, 1); continue;
-        }
+        let eb = gs.enemyBullets[i]; eb.x += eb.vx; eb.y += eb.vy;
+        if (eb.y > NATIVE_H + 20 || eb.x < -20 || eb.x > NATIVE_W + 20) { gs.enemyBullets.splice(i, 1); continue; }
         
-        // BUG FIXED HERE: Break out of bullet loop if array is cleared by playerHit!
-        if (p.invuln <= 0 && Math.hypot(eb.x - p.x, eb.y - p.y) < 10) {
-          playerHit(gs);
-          break; // Stop iterating! gs.enemyBullets is now empty.
+        let blocked = false;
+        for (let j = gs.satellites.length - 1; j >= 0; j--) {
+           let sat = gs.satellites[j]; let sx = p.x + Math.cos(sat.angle)*40; let sy = p.y + Math.sin(sat.angle)*40;
+           if (Math.hypot(eb.x - sx, eb.y - sy) < 15) {
+               sat.hp--; blocked = true; playAudio('hit');
+               gs.particles.push({x: eb.x, y: eb.y, vx: (Math.random()-0.5)*4, vy: (Math.random()-0.5)*4, life: 15, color: '#0ff'});
+               if (sat.hp <= 0) gs.satellites.splice(j, 1);
+               break;
+           }
+        }
+        if (blocked) { gs.enemyBullets.splice(i, 1); continue; }
+
+        if (p.invuln <= 0 && Math.hypot(eb.x - p.x, eb.y - p.y) < 10) { playerHit(gs); break; }
+      }
+
+      if (!gs.boss && gs.levelTick < MAX_TICK - 100) {
+        let spawnRate = Math.max(15, 70 - (gs.world * 5) - (gs.subLevel * 2)) / gs.loopMult;
+        if (gs.tick % Math.floor(spawnRate) === 0) {
+          let rand = Math.random(); let startX = 30 + Math.random() * (NATIVE_W - 60);
+          if (rand < 0.4) {
+            let count = Math.random() > 0.5 ? 5 : 3;
+            for(let i=0; i<count; i++) {
+              let offsetX = (i - Math.floor(count/2)) * 30; let offsetY = Math.abs(i - Math.floor(count/2)) * -25;
+              gs.enemies.push({ tier: 'tiny', class: 'tiny', x: startX + offsetX, y: -30 + offsetY, hp: 1, pts: 20, tick: 0, startX: startX + offsetX, isLeader: i === Math.floor(count/2) });
+            }
+          } else if (rand < 0.7) {
+            gs.enemies.push({ tier: 'basic', class: 'fighter', x: startX, y: -30, hp: 2*gs.loopMult, pts: 50, tick: 0, startX: startX });
+          } else if (rand < 0.9) {
+            gs.enemies.push({ tier: 'heavy', class: 'bomber', x: startX, y: -40, hp: 8*gs.loopMult, pts: 150, tick: 0, startX: startX });
+          } else {
+            gs.enemies.push({ tier: 'medium', class: 'boat', x: Math.random() > 0.5 ? -30 : NATIVE_W + 30, y: 80 + Math.random() * 200, hp: 5*gs.loopMult, pts: 200, tick: 0, dir: Math.random() > 0.5 ? 1 : -1 });
+          }
         }
       }
 
-      let spawnRate = Math.max(30, 80 - (gs.level * 4));
-      if (gs.tick % spawnRate === 0) {
-        let rand = Math.random();
-        let startX = 30 + Math.random() * (NATIVE_W - 60);
-        if (rand < 0.6) gs.enemies.push({ type: 'fighter', x: startX, y: -30, hp: 1, pts: 50, tick: 0, startX: startX });
-        else if (rand < 0.85) gs.enemies.push({ type: 'bomber', x: startX, y: -40, hp: 6, pts: 150, tick: 0, startX: startX });
-        else gs.enemies.push({ type: 'boat', x: Math.random() > 0.5 ? -30 : NATIVE_W + 30, y: 80 + Math.random() * 200, hp: 4, pts: 200, tick: 0, dir: Math.random() > 0.5 ? 1 : -1 });
+      if (gs.boss) {
+        let b = gs.boss; b.tick++;
+        if (b.state === 'entering') {
+          b.y += 1; if (b.y >= 80) b.state = 'fighting';
+        } else if (b.state === 'fighting') {
+          b.x = NATIVE_W/2 + Math.sin(b.tick * 0.02 * gs.loopMult) * (NATIVE_W/2 - 60);
+          
+          if (gs.world === 7 && b.tick % 100 === 0) { // Final Boss Spawns Tinys
+             for(let i=-1; i<=1; i+=2) gs.enemies.push({ tier: 'tiny', class: 'tiny', x: b.x + i*40, y: b.y, hp: 1, pts: 20, tick: 0, startX: b.x + i*40, isLeader: true });
+          }
+          if (b.tick % Math.floor(60 / gs.loopMult) === 0) {
+             fireEnemyBullet(gs, b.x - 30, b.y + 20, 5, 0); fireEnemyBullet(gs, b.x + 30, b.y + 20, 5, 0);
+          }
+          if (b.tick % Math.floor(150 / gs.loopMult) === 0) {
+             for(let i=-2; i<=2; i++) fireEnemyBullet(gs, b.x, b.y + 30, 4, i * 0.2);
+          }
+        }
+        if (p.invuln <= 0 && Math.hypot(b.x - p.x, b.y - p.y) < b.w/2) playerHit(gs);
       }
 
       for (let i = gs.enemies.length - 1; i >= 0; i--) {
-        let e = gs.enemies[i];
-        e.tick++;
-
-        if (e.type === 'fighter') {
-          e.y += 4; e.x = e.startX + Math.sin(e.tick * 0.05) * 50;
-          if (e.tick % 45 === 0 && Math.random() < 0.3) fireEnemyBullet(gs, e, 5);
-        } else if (e.type === 'bomber') {
-          e.y += 1.5;
-          if (e.tick % 50 === 0) fireEnemyBullet(gs, e, 4.5);
-        } else if (e.type === 'boat') {
+        let e = gs.enemies[i]; e.tick++;
+        if (e.class === 'tiny') {
+          e.y += 6 * gs.loopMult; e.x = e.startX + Math.sin(e.tick * 0.1) * 20;
+          if (e.isLeader && e.tick % 30 === 0 && Math.random() < 0.5) fireEnemyBullet(gs, e.x, e.y, 6);
+        } else if (e.class === 'fighter') {
+          e.y += 2.5 * gs.loopMult; e.x = e.startX + Math.sin(e.tick * 0.03) * 60;
+          if (e.tick % 80 === 0 && Math.random() < 0.4) fireEnemyBullet(gs, e.x, e.y, 4);
+        } else if (e.class === 'bomber') {
+          e.y += 1.2 * gs.loopMult;
+          if (e.tick % 50 === 0) fireEnemyBullet(gs, e.x, e.y, 4.5);
+        } else if (e.class === 'boat') {
           e.x += 1.0 * e.dir; e.y += 0.8; 
-          if (e.tick % 70 === 0) fireEnemyBullet(gs, e, 4);
+          if (e.tick % 70 === 0) fireEnemyBullet(gs, e.x, e.y, 4);
         }
 
-        if (e.y > NATIVE_H + 50 || e.x < -60 || e.x > NATIVE_W + 60) {
-          gs.enemies.splice(i, 1); continue;
-        }
-
-        // BUG FIXED HERE: Ensure player is 'playing' so we don't double-hit on same frame
-        if (p.invuln <= 0 && gs.status === 'playing' && e.type !== 'boat' && Math.hypot(e.x - p.x, e.y - p.y) < 18) {
-          playerHit(gs);
-          e.hp = 0; 
-        }
-
-        let hit = false;
-        for (let j = gs.bullets.length - 1; j >= 0; j--) {
-          let b = gs.bullets[j];
-          let hitbox = e.type === 'bomber' ? 22 : 14;
-          if (Math.hypot(b.x - e.x, b.y - e.y) < hitbox) {
-            e.hp--; gs.bullets.splice(j, 1); playAudio('hit');
-            gs.particles.push({x: b.x, y: b.y, vx: (Math.random()-0.5)*3, vy: (Math.random()-0.5)*3, life: 10, color: '#ffaa00'});
-            if (e.hp <= 0) {
-              hit = true; gs.score += e.pts;
-              if (gs.score > gs.highScore) gs.highScore = gs.score;
-              playAudio('boom');
-              let explosionCount = e.type === 'bomber' ? 25 : 12;
-              for(let k=0; k<explosionCount; k++) {
-                gs.particles.push({
-                  x: e.x + (Math.random()-0.5)*10, y: e.y + (Math.random()-0.5)*10, 
-                  vx: (Math.random()-0.5)*5, vy: (Math.random()-0.5)*5, 
-                  life: 20 + Math.random()*25, color: Math.random() > 0.5 ? '#f00' : '#ffaa00'
-                });
-              }
-            }
-            break;
-          }
-        }
-        if (hit) gs.enemies.splice(i, 1);
+        if (e.y > NATIVE_H + 50 || e.x < -60 || e.x > NATIVE_W + 60) { gs.enemies.splice(i, 1); continue; }
+        if (p.invuln <= 0 && e.class !== 'boat' && Math.hypot(e.x - p.x, e.y - p.y) < 18) { playerHit(gs); e.hp = 0; }
       }
 
-      if (gs.tick % 1200 === 0) gs.level++;
+      for (let j = gs.bullets.length - 1; j >= 0; j--) {
+        let b = gs.bullets[j]; let bulletHit = false;
+
+        if (gs.boss && gs.boss.state === 'fighting') {
+           if (Math.abs(b.x - gs.boss.x) < gs.boss.w/2 && Math.abs(b.y - gs.boss.y) < gs.boss.h/2) {
+              gs.boss.hp -= (b.type === 'missile' ? 5 : (b.type === 'laser' ? 2 : 1)); bulletHit = true;
+              gs.particles.push({x: b.x, y: b.y, vx: (Math.random()-0.5)*4, vy: (Math.random()-0.5)*4, life: 10, color: '#fff'});
+              if (gs.boss.hp <= 0) {
+                 addScore(gs, gs.boss.pts); playAudio('boom');
+                 if (gs.world < 7) { gs.lives++; playAudio('powerup'); showMessage(gs, "BOSS DESTROYED - 1 UP!"); } 
+                 else showMessage(gs, "FINAL TARGET DESTROYED");
+                 for(let k=0; k<100; k++) gs.particles.push({x: gs.boss.x + (Math.random()-0.5)*gs.boss.w, y: gs.boss.y + (Math.random()-0.5)*gs.boss.h, vx: (Math.random()-0.5)*15, vy: (Math.random()-0.5)*15, life: 40 + Math.random()*60, color: Math.random()>0.5?'#f00':'#ff0'});
+                 gs.boss = null; gs.status = 'level_transition'; gs.transitionTimer = 200;
+              }
+           }
+        }
+
+        if (!bulletHit) {
+          for (let i = gs.enemies.length - 1; i >= 0; i--) {
+            let e = gs.enemies[i]; let hitbox = e.class === 'bomber' ? 22 : (e.class === 'tiny' ? 10 : 14);
+            if (Math.hypot(b.x - e.x, b.y - e.y) < hitbox) {
+              e.hp -= (b.type === 'missile' ? 5 : (b.type === 'laser' ? 2 : 1)); bulletHit = true;
+              if (b.type === 'missile') { 
+                 playAudio('boom'); gs.particles.push({x: b.x, y: b.y, life: 15, isFlash: true, color: 'rgba(255,100,0,0.5)'});
+                 gs.enemies.forEach(ex => { if(Math.hypot(ex.x - b.x, ex.y - b.y) < 60) ex.hp -= 3; });
+              } else {
+                 playAudio('hit'); gs.particles.push({x: b.x, y: b.y, vx: (Math.random()-0.5)*3, vy: (Math.random()-0.5)*3, life: 10, color: '#ffaa00'});
+              }
+              break;
+            }
+          }
+        }
+        if (bulletHit && b.type !== 'laser') gs.bullets.splice(j, 1);
+      }
+
+      for (let i = gs.enemies.length - 1; i >= 0; i--) {
+          let e = gs.enemies[i];
+          if (e.hp <= 0) {
+            addScore(gs, e.pts); playAudio('boom');
+            let explosionCount = e.class === 'bomber' ? 25 : 10;
+            for(let k=0; k<explosionCount; k++) gs.particles.push({ x: e.x + (Math.random()-0.5)*10, y: e.y + (Math.random()-0.5)*10, vx: (Math.random()-0.5)*5, vy: (Math.random()-0.5)*5, life: 20 + Math.random()*25, color: Math.random() > 0.5 ? '#f00' : '#ffaa00' });
+            
+            gs.kills[e.tier]++;
+            if ((e.tier === 'tiny' && gs.kills.tiny >= 15) || (e.tier === 'basic' && gs.kills.basic >= 10) || 
+                (e.tier === 'medium' && gs.kills.medium >= 5) || (e.tier === 'heavy' && gs.kills.heavy >= 3)) {
+                spawnPowerup(gs, e.x, e.y); gs.kills[e.tier] = 0;
+            }
+            gs.enemies.splice(i, 1);
+          }
+      }
     };
 
     const draw = () => {
       let gs = state.current;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      ctx.fillStyle = '#001a44';
-      ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
+      let theme = WORLDS[gs.world];
+      ctx.fillStyle = theme.water; ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
 
       if (gs.status === 'start') {
-        ctx.fillStyle = '#ffaa00'; ctx.font = '60px "VT323", monospace'; ctx.textAlign = 'center'; ctx.fillText("BASS 1941", NATIVE_W/2, 180);
-        ctx.fillStyle = '#fff'; ctx.font = '30px "VT323", monospace'; ctx.fillText("PACIFIC STRIKE", NATIVE_W/2, 220);
-        ctx.font = '24px "VT323", monospace'; ctx.fillText("PRESS ENTER TO START", NATIVE_W/2, 320);
-        ctx.fillText("WASD: Move | SPACE: Fire", NATIVE_W/2, 360);
+        ctx.fillStyle = '#ffaa00'; ctx.font = '60px "VT323", monospace'; ctx.textAlign = 'center'; ctx.fillText("BASS 1941", NATIVE_W/2, 160);
+        ctx.fillStyle = '#fff'; ctx.font = '30px "VT323", monospace'; ctx.fillText("PACIFIC STRIKE", NATIVE_W/2, 200);
+        ctx.font = '24px "VT323", monospace'; ctx.fillText("PRESS ENTER TO START", NATIVE_W/2, 300);
+        ctx.fillStyle = '#aaa'; ctx.font = '18px "VT323", monospace'; ctx.fillText("WASD: Move | SPACE: Fire | SHIFT: Smart Bomb", NATIVE_W/2, 350);
         return;
       }
 
       gs.islands.forEach(isl => {
-        ctx.fillStyle = '#887733';
-        isl.shapes.forEach(sh => {
-          ctx.beginPath(); ctx.arc(Math.floor(isl.x + sh.ox), Math.floor(isl.y + sh.oy), sh.r, 0, Math.PI*2); ctx.fill();
-        });
-        ctx.fillStyle = '#004400';
-        isl.shapes.forEach(sh => {
-          ctx.beginPath(); ctx.arc(Math.floor(isl.x + sh.ox), Math.floor(isl.y + sh.oy), sh.r * 0.75, 0, Math.PI*2); ctx.fill();
-        });
+        ctx.fillStyle = theme.sand; isl.shapes.forEach(sh => { ctx.beginPath(); ctx.arc(Math.floor(isl.x + sh.ox), Math.floor(isl.y + sh.oy), sh.r, 0, Math.PI*2); ctx.fill(); });
+        ctx.fillStyle = theme.jungle; isl.shapes.forEach(sh => { ctx.beginPath(); ctx.arc(Math.floor(isl.x + sh.ox), Math.floor(isl.y + sh.oy), sh.r * 0.75, 0, Math.PI*2); ctx.fill(); });
+      });
+
+      ctx.fillStyle = TIMES[gs.subLevel].tint; ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
+
+      gs.weatherParticles.forEach(wp => {
+         ctx.fillStyle = wp.c;
+         if (theme.weather === 'rain') ctx.fillRect(wp.x, wp.y, 1, 10);
+         else if (theme.weather === 'sandstorm') ctx.fillRect(wp.x, wp.y, 15, 2);
+         else ctx.fillRect(wp.x, wp.y, 3, 3);
       });
 
       const shadowOffset = 12;
-      gs.enemies.forEach(e => {
-        if (e.type !== 'boat') drawSprite(SPRITES[e.type], e.x + shadowOffset, e.y + shadowOffset, 3, true);
-      });
-      if ((gs.status === 'playing' || gs.status === 'respawning') && gs.player.invuln % 10 < 5) {
+      gs.enemies.forEach(e => { if (e.class !== 'boat') drawSprite(SPRITES[e.class === 'tiny' ? 'tinyFighter' : e.class], e.x + shadowOffset, e.y + shadowOffset, e.class === 'tiny' ? 2 : 3, true); });
+      if (gs.boss) drawSprite(SPRITES.boss, gs.boss.x + shadowOffset*2, gs.boss.y + shadowOffset*2, 3, true);
+      
+      if ((gs.status === 'playing' || gs.status === 'respawning' || gs.status === 'level_transition') && gs.player.invuln % 10 < 5) {
          drawSprite(SPRITES.player, gs.player.x + shadowOffset, gs.player.y + shadowOffset, 3, true);
+         gs.satellites.forEach(sat => { drawSprite(SPRITES.satellite, gs.player.x + shadowOffset + Math.cos(sat.angle)*40, gs.player.y + shadowOffset + Math.sin(sat.angle)*40, 2, true); });
       }
 
-      gs.enemies.forEach(e => { if (e.type === 'boat') drawSprite(SPRITES.boat, e.x, e.y, 3, false); });
-      gs.enemies.forEach(e => { if (e.type !== 'boat') drawSprite(SPRITES[e.type], e.x, e.y, 3, false); });
+      gs.enemies.forEach(e => { if (e.class === 'boat') drawSprite(SPRITES.boat, e.x, e.y, 3, false); });
+      gs.enemies.forEach(e => { if (e.class !== 'boat') drawSprite(SPRITES[e.class === 'tiny' ? 'tinyFighter' : e.class], e.x, e.y, e.class === 'tiny' ? 2 : 3, false); });
+      if (gs.boss) drawSprite(SPRITES.boss, gs.boss.x, gs.boss.y, 3, false);
 
-      if (gs.status === 'playing' && gs.player.invuln % 10 < 5) {
+      gs.powerups.forEach(pu => {
+         ctx.fillStyle = pu.type === 'increase' ? '#f00' : pu.type === 'spread' ? '#0f0' : pu.type === 'missile' ? '#ff0' : pu.type === 'satellite' ? '#fff' : '#0ff';
+         ctx.fillRect(pu.x - pu.w/2, pu.y - pu.h/2, pu.w, pu.h);
+         ctx.fillStyle = '#000'; ctx.font = '14px "VT323", monospace'; ctx.textAlign = 'center';
+         ctx.fillText(pu.type.charAt(0).toUpperCase(), pu.x, pu.y + 4);
+      });
+
+      if ((gs.status === 'playing' || gs.status === 'level_transition') && gs.player.invuln % 10 < 5) {
         drawSprite(SPRITES.player, gs.player.x, gs.player.y, 3, false);
-      } else if (gs.status === 'respawning') {
-        if (gs.respawnTimer < 60) {
-          ctx.fillStyle = '#0f0'; ctx.font = '40px "VT323", monospace'; ctx.textAlign = 'center';
-          ctx.fillText("READY", NATIVE_W/2, NATIVE_H/2);
-          if (Math.floor(Date.now() / 150) % 2 === 0) {
-            drawSprite(SPRITES.player, gs.player.x, gs.player.y, 3, false);
-          }
-        }
+        gs.satellites.forEach(sat => { drawSprite(SPRITES.satellite, gs.player.x + Math.cos(sat.angle)*40, gs.player.y + Math.sin(sat.angle)*40, 2, false); });
+      } else if (gs.status === 'respawning' && gs.respawnTimer < 60) {
+        ctx.fillStyle = '#0f0'; ctx.font = '40px "VT323", monospace'; ctx.textAlign = 'center'; ctx.fillText("READY", NATIVE_W/2, NATIVE_H/2);
+        if (Math.floor(Date.now() / 150) % 2 === 0) drawSprite(SPRITES.player, gs.player.x, gs.player.y, 3, false);
       }
 
-      ctx.fillStyle = '#ffaa00';
-      gs.bullets.forEach(b => ctx.fillRect(Math.floor(b.x), Math.floor(b.y), b.w, b.h));
+      gs.bullets.forEach(b => {
+         ctx.fillStyle = b.type === 'missile' ? '#ff0' : b.type === 'laser' ? '#0ff' : '#ffaa00';
+         ctx.fillRect(Math.floor(b.x), Math.floor(b.y), b.w, b.h);
+      });
 
       gs.enemyBullets.forEach(eb => {
         ctx.fillStyle = Math.floor(Date.now() / 100) % 2 === 0 ? '#ff0000' : '#ffaa00';
@@ -3843,31 +4054,47 @@ if (gs.status === 'start' && keys['Enter']) {
       });
 
       gs.particles.forEach(p => {
-        ctx.fillStyle = p.color;
-        let size = Math.max(2, Math.floor((p.life / 20) * 4));
-        ctx.fillRect(Math.floor(p.x), Math.floor(p.y), size, size);
+        if (p.isFlash) { ctx.fillStyle = p.color || `rgba(255, 255, 255, ${p.life/30})`; ctx.fillRect(0,0,NATIVE_W,NATIVE_H); } 
+        else { ctx.fillStyle = p.color; let size = Math.max(2, Math.floor((p.life / 20) * 4)); ctx.fillRect(Math.floor(p.x), Math.floor(p.y), size, size); }
       });
 
       ctx.fillStyle = '#fff'; ctx.font = '24px "VT323", monospace'; ctx.textAlign = 'left';
       ctx.fillText(`SCORE: ${formatScore(gs.score)}`, 10, 25);
-      ctx.textAlign = 'right';
-      ctx.fillText(`LIVES: ${gs.lives}`, NATIVE_W - 10, 25);
+      
+      for(let i=0; i<gs.bombs; i++) { ctx.fillStyle = '#f00'; ctx.beginPath(); ctx.arc(10 + i*15, 45, 5, 0, Math.PI*2); ctx.fill(); }
+
+      ctx.textAlign = 'right'; ctx.fillText(`LIVES: ${gs.lives}`, NATIVE_W - 10, 25);
+
+      if (gs.boss) {
+         ctx.fillStyle = '#f00'; ctx.fillRect(120, 10, NATIVE_W - 240, 10);
+         ctx.fillStyle = '#0f0'; ctx.fillRect(120, 10, (NATIVE_W - 240) * (gs.boss.hp / gs.boss.maxHp), 10);
+      }
+
+      if (gs.messageTimer > 0) {
+        ctx.fillStyle = '#0ff'; ctx.textAlign = 'center'; ctx.font = '30px "VT323", monospace';
+        ctx.fillText(gs.messageText, NATIVE_W/2, NATIVE_H/2 - 50);
+      }
 
       if (gs.status === 'gameover') {
         ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0,0,NATIVE_W,NATIVE_H);
-        ctx.fillStyle = '#f00'; ctx.textAlign = 'center'; ctx.font = '50px "VT323", monospace';
-        ctx.fillText("MISSION FAILED", NATIVE_W/2, NATIVE_H/2 - 10);
-        ctx.fillStyle = '#fff'; ctx.font = '24px "VT323", monospace';
-        ctx.fillText("PRESS ENTER TO RESTART", NATIVE_W/2, NATIVE_H/2 + 30);
+        ctx.fillStyle = '#f00'; ctx.textAlign = 'center'; ctx.font = '50px "VT323", monospace'; ctx.fillText("MISSION FAILED", NATIVE_W/2, NATIVE_H/2 - 10);
+        ctx.fillStyle = '#fff'; ctx.font = '24px "VT323", monospace'; ctx.fillText("PRESS ENTER TO RESTART", NATIVE_W/2, NATIVE_H/2 + 30);
+      }
+      
+      if (gs.status === 'ending') {
+        ctx.fillStyle = 'rgba(0,0,0,0.9)'; ctx.fillRect(0,0,NATIVE_W,NATIVE_H);
+        ctx.fillStyle = '#0f0'; ctx.textAlign = 'center'; ctx.font = '40px "VT323", monospace'; ctx.fillText("CONGRATULATIONS PILOT!", NATIVE_W/2, NATIVE_H/2 - 80);
+        ctx.fillStyle = '#fff'; ctx.font = '24px "VT323", monospace'; 
+        ctx.fillText("YOU HAVE OBLITERATED THE CYBORG FLEET.", NATIVE_W/2, NATIVE_H/2 - 30);
+        ctx.fillText("THE SKIES ARE SAFE ONCE MORE...", NATIVE_W/2, NATIVE_H/2);
+        ctx.fillStyle = '#f00'; ctx.fillText("BUT A NEW THREAT LOOMS...", NATIVE_W/2, NATIVE_H/2 + 40);
+        ctx.fillStyle = '#ffaa00'; ctx.fillText("PRESS ENTER TO PLAY AGAIN (HARD MODE)", NATIVE_W/2, NATIVE_H/2 + 100);
+        ctx.fillStyle = '#aaa'; ctx.fillText("PRESS M TO RETURN TO MENU", NATIVE_W/2, NATIVE_H/2 + 130);
       }
     };
 
-    const loop = () => {
-      update(); draw();
-      animationFrameId = requestAnimationFrame(loop);
-    };
+    const loop = () => { update(); draw(); animationFrameId = requestAnimationFrame(loop); };
     loop();
-
     return () => cancelAnimationFrame(animationFrameId);
   }, [audioCtx, onMenu]);
 
