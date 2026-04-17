@@ -4041,11 +4041,10 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       }
     };
 
-    const draw = () => {
+const draw = () => {
       let gs = state.current;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      let themeIdx = Math.floor((gs.level - 1) / 4) % THEMES.length;
       let theme = WORLDS[gs.world];
       
       ctx.fillStyle = theme.water; ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
