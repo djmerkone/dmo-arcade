@@ -3914,11 +3914,13 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         if (p.invuln <= 0 && Math.hypot(b.x - p.x, b.y - p.y) < b.w/2) playerHit(gs);
       }
 
-      for (let i = gs.enemies.length - 1; i >= 0; i--) {
+for (let i = gs.enemies.length - 1; i >= 0; i--) {
         let e = gs.enemies[i]; e.tick++;
+
         if (e.class === 'tiny') {
-          e.y += 6 * gs.loopMult; e.x = e.startX + Math.sin(e.tick * 0.1) * 20;
-          if (e.isLeader && e.tick % 30 === 0 && Math.random() < 0.5) fireEnemyBullet(gs, e.x, e.y, 6);
+          // Slowed down from 6 to 3.5, and widened the swoop pattern slightly
+          e.y += 3.5 * gs.loopMult; e.x = e.startX + Math.sin(e.tick * 0.08) * 35;
+          if (e.isLeader && e.tick % 40 === 0 && Math.random() < 0.5) fireEnemyBullet(gs, e.x, e.y, 5);
         } else if (e.class === 'fighter') {
           e.y += 2.5 * gs.loopMult; e.x = e.startX + Math.sin(e.tick * 0.03) * 60;
           if (e.tick % 80 === 0 && Math.random() < 0.4) fireEnemyBullet(gs, e.x, e.y, 4);
@@ -3951,9 +3953,11 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
            }
         }
 
-        if (!bulletHit) {
+if (!bulletHit) {
           for (let i = gs.enemies.length - 1; i >= 0; i--) {
-            let e = gs.enemies[i]; let hitbox = e.class === 'bomber' ? 22 : (e.class === 'tiny' ? 10 : 14);
+            let e = gs.enemies[i]; 
+            // Increased tiny hitbox to 14 to match the new larger scale
+            let hitbox = e.class === 'bomber' ? 22 : 14; 
             if (Math.hypot(b.x - e.x, b.y - e.y) < hitbox) {
               e.hp -= (b.type === 'missile' ? 5 : (b.type === 'laser' ? 2 : 1)); bulletHit = true;
               if (b.type === 'missile') { 
@@ -4006,7 +4010,11 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         ctx.fillStyle = theme.jungle; isl.shapes.forEach(sh => { ctx.beginPath(); ctx.arc(Math.floor(isl.x + sh.ox), Math.floor(isl.y + sh.oy), sh.r * 0.75, 0, Math.PI*2); ctx.fill(); });
       });
 
-      ctx.fillStyle = TIMES[gs.subLevel].tint; ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
+ctx.fillStyle = TIMES[gs.subLevel].tint; ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
+
+      // --- FIX: Add a dark overlay to make sprites pop against the terrain ---
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
 
       gs.weatherParticles.forEach(wp => {
          ctx.fillStyle = wp.c;
@@ -4016,7 +4024,8 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       });
 
       const shadowOffset = 12;
-      gs.enemies.forEach(e => { if (e.class !== 'boat') drawSprite(SPRITES[e.class === 'tiny' ? 'tinyFighter' : e.class], e.x + shadowOffset, e.y + shadowOffset, e.class === 'tiny' ? 2 : 3, true); });
+      // FIX: Standardized scale to 3 for tiny enemies so they are larger and easier to see
+      gs.enemies.forEach(e => { if (e.class !== 'boat') drawSprite(SPRITES[e.class === 'tiny' ? 'tinyFighter' : e.class], e.x + shadowOffset, e.y + shadowOffset, 3, true); });
       if (gs.boss) drawSprite(SPRITES.boss, gs.boss.x + shadowOffset*2, gs.boss.y + shadowOffset*2, 3, true);
       
       if ((gs.status === 'playing' || gs.status === 'respawning' || gs.status === 'level_transition') && gs.player.invuln % 10 < 5) {
@@ -4025,7 +4034,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       }
 
       gs.enemies.forEach(e => { if (e.class === 'boat') drawSprite(SPRITES.boat, e.x, e.y, 3, false); });
-      gs.enemies.forEach(e => { if (e.class !== 'boat') drawSprite(SPRITES[e.class === 'tiny' ? 'tinyFighter' : e.class], e.x, e.y, e.class === 'tiny' ? 2 : 3, false); });
+      gs.enemies.forEach(e => { if (e.class !== 'boat') drawSprite(SPRITES[e.class === 'tiny' ? 'tinyFighter' : e.class], e.x, e.y, 3, false); });
       if (gs.boss) drawSprite(SPRITES.boss, gs.boss.x, gs.boss.y, 3, false);
 
       gs.powerups.forEach(pu => {
