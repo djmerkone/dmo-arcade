@@ -3479,6 +3479,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
 
   const NATIVE_W = 640;
   const NATIVE_H = 480;
+  const MAX_TICK = 3000; // Duration of a standard level before clear/boss
 
   const state = useRef({
     status: 'start',
@@ -3491,6 +3492,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
     bgScrollY: 0,
     islands: [],
     respawnTimer: 0,
+    transitionTimer: 0,
     messageTimer: 0,
     messageText: '',
     
@@ -3512,11 +3514,12 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
     keys: {}
   });
 
+  // Themes rotate every 4 levels
   const THEMES = [
-    { water: '#001a44', sand: '#887733', jungle: '#004400', name: "MISSION 1: PACIFIC SEA" },
-    { water: '#003366', sand: '#aa9955', jungle: '#226622', name: "MISSION 2: DAYBREAK" },
-    { water: '#221133', sand: '#554422', jungle: '#112211', name: "MISSION 3: DUSK STRIKE" },
-    { water: '#050511', sand: '#222211', jungle: '#001100', name: "MISSION 4: NIGHT OPERATION" }
+    { water: '#001a44', sand: '#887733', jungle: '#004400', name: "PACIFIC SEA" },
+    { water: '#003366', sand: '#aa9955', jungle: '#226622', name: "DAYBREAK" },
+    { water: '#221133', sand: '#554422', jungle: '#112211', name: "DUSK STRIKE" },
+    { water: '#050511', sand: '#222211', jungle: '#001100', name: "NIGHT OPERATION" }
   ];
 
   const PALETTE = {
@@ -3587,6 +3590,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
     const ctx = canvas.getContext('2d');
     let animationFrameId;
 
+    // --- AUDIO SYSTEM ---
     const playAudio = (type) => {
       if (!audioCtx || audioCtx.state !== 'running') return;
       const t = audioCtx.currentTime;
@@ -3654,6 +3658,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
 
     const formatScore = (s) => String(s).padStart(6, '0');
 
+    // --- GAME LOGIC HANDLERS ---
     const addScore = (gs, pts) => {
       gs.score += pts;
       if (gs.score > gs.highScore) gs.highScore = gs.score;
@@ -3715,7 +3720,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         });
       }
       gs.bullets = []; gs.enemyBullets = [];
-      gs.player.invuln = 120; 
+      gs.player.invuln = 120; // Immediate invulnerability
 
       if (gs.lives <= 0) {
           gs.status = 'gameover';
@@ -3735,9 +3740,11 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       showMessage(gs, "WARNING: HEAVY BOMBER APPROACHING");
     };
 
+    // --- CORE LOOP ---
     const update = () => {
       let gs = state.current;
       let keys = gs.keys;
+      let themeIdx = Math.floor((gs.level - 1) / 4) % THEMES.length;
 
       if (keys['m'] || keys['M']) { onMenu(); return; }
 
@@ -3747,7 +3754,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         gs.player = { x: NATIVE_W/2, y: NATIVE_H - 80, w: 45, h: 30, speed: 5, cooldown: 0, invuln: 120 };
         gs.bullets = []; gs.enemyBullets = []; gs.enemies = []; gs.powerups = []; gs.particles = []; gs.boss = null;
         initMap(gs);
-        showMessage(gs, THEMES[0].name);
+        showMessage(gs, `MISSION 1: ${THEMES[0].name}`);
         window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Play' }));
       }
 
@@ -3756,7 +3763,8 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Start' }));
       }
 
-      if (gs.status === 'playing' || gs.status === 'respawning' || gs.status === 'gameover') {
+      // Map & Environment Updates (Always run unless start/gameover)
+      if (gs.status === 'playing' || gs.status === 'respawning' || gs.status === 'level_transition') {
         gs.bgScrollY += 0.8;
         for (let i = gs.islands.length - 1; i >= 0; i--) {
           gs.islands[i].y += 0.8;
@@ -3773,6 +3781,26 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         if (gs.messageTimer > 0) gs.messageTimer--;
       }
 
+      // --- CINEMATIC LEVEL TRANSITION ---
+      if (gs.status === 'level_transition') {
+        gs.transitionTimer--;
+        gs.player.y -= 4; // Ship flies off screen
+        gs.player.invuln = 10;
+        
+        // Clean screen
+        gs.enemies = []; gs.enemyBullets = []; gs.powerups = [];
+        
+        if (gs.transitionTimer <= 0) {
+           gs.level++; gs.levelTick = 0; gs.bombs++;
+           let newThemeIdx = Math.floor((gs.level - 1) / 4) % THEMES.length;
+           initMap(gs); 
+           gs.player.x = NATIVE_W/2; gs.player.y = NATIVE_H - 80;
+           showMessage(gs, `MISSION ${gs.level}: ${THEMES[newThemeIdx].name}`);
+           gs.status = 'playing';
+        }
+        return; 
+      }
+
       if (gs.status === 'respawning') {
         gs.respawnTimer--;
         if (gs.respawnTimer <= 0) { gs.status = 'playing'; gs.player.invuln = 120; }
@@ -3785,17 +3813,18 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       gs.levelTick++;
       let p = gs.player;
 
-      const MAX_TICK = 3000;
+      // LEVEL PROGRESSION TRIGGER
       if (!gs.boss) {
         if (gs.levelTick === Math.floor(MAX_TICK * 0.4) || gs.levelTick === Math.floor(MAX_TICK * 0.8)) {
            spawnPowerup(gs, 50 + Math.random()*(NATIVE_W-100), -20);
         }
         if (gs.levelTick >= MAX_TICK) {
-           if (gs.level % 4 === 0) spawnBoss(gs);
-           else {
-             gs.level++; gs.levelTick = 0; gs.bombs++;
-             showMessage(gs, THEMES[(gs.level-1)%4].name);
-             initMap(gs); 
+           if (gs.level % 4 === 0) {
+             spawnBoss(gs);
+           } else {
+             gs.status = 'level_transition';
+             gs.transitionTimer = 200;
+             showMessage(gs, "MISSION ACCOMPLISHED");
            }
         }
       }
@@ -3810,11 +3839,13 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       p.x = Math.max(20, Math.min(NATIVE_W - 20, p.x));
       p.y = Math.max(20, Math.min(NATIVE_H - 20, p.y));
 
+      // SMART BOMB
       if ((keys['Shift'] || keys['e']) && gs.bombs > 0 && p.cooldown <= 0) {
          triggerBomb(gs);
          p.cooldown = 60;
       }
 
+      // PLAYER SHOOTING
       if (keys[' '] && p.cooldown <= 0) {
         let wLvl = Math.min(3, gs.weaponLevel);
         if (gs.weapon === 'twin') {
@@ -3849,12 +3880,14 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         }
       }
 
+      // Update Player Bullets
       for (let i = gs.bullets.length - 1; i >= 0; i--) {
         let b = gs.bullets[i];
         b.x += b.vx; b.y += b.vy;
         if (b.y < -40) gs.bullets.splice(i, 1);
       }
 
+      // Update Powerups
       for (let i = gs.powerups.length - 1; i >= 0; i--) {
         let pu = gs.powerups[i];
         pu.y += pu.vy;
@@ -3869,6 +3902,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         if (pu.y > NATIVE_H + 20) gs.powerups.splice(i, 1);
       }
 
+      // Update Enemy Bullets
       for (let i = gs.enemyBullets.length - 1; i >= 0; i--) {
         let eb = gs.enemyBullets[i];
         eb.x += eb.vx; eb.y += eb.vy;
@@ -3880,6 +3914,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         }
       }
 
+      // Enemy Spawning (Stops if Boss is present or approaching)
       if (!gs.boss && gs.levelTick < MAX_TICK - 100) {
         let spawnRate = Math.max(20, 70 - (gs.level * 3));
         if (gs.tick % spawnRate === 0) {
@@ -3903,6 +3938,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         }
       }
 
+      // Boss Logic
       if (gs.boss) {
         let b = gs.boss;
         b.tick++;
@@ -3921,6 +3957,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         if (p.invuln <= 0 && Math.hypot(b.x - p.x, b.y - p.y) < b.w/2) playerHit(gs);
       }
 
+      // Enemy Logic
       for (let i = gs.enemies.length - 1; i >= 0; i--) {
         let e = gs.enemies[i];
         e.tick++;
@@ -3948,10 +3985,12 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         }
       }
 
+      // --- BULLET COLLISION LOGIC ---
       for (let j = gs.bullets.length - 1; j >= 0; j--) {
         let b = gs.bullets[j];
         let bulletHit = false;
 
+        // Check Boss First
         if (gs.boss && gs.boss.state === 'fighting') {
            if (Math.abs(b.x - gs.boss.x) < gs.boss.w/2 && Math.abs(b.y - gs.boss.y) < gs.boss.h/2) {
               gs.boss.hp -= (b.type === 'missile' ? 5 : (b.type === 'laser' ? 2 : 1));
@@ -3963,14 +4002,14 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
                  playAudio('boom');
                  for(let k=0; k<100; k++) gs.particles.push({x: gs.boss.x + (Math.random()-0.5)*gs.boss.w, y: gs.boss.y + (Math.random()-0.5)*gs.boss.h, vx: (Math.random()-0.5)*15, vy: (Math.random()-0.5)*15, life: 40 + Math.random()*60, color: Math.random()>0.5?'#f00':'#ff0'});
                  gs.boss = null;
-                 gs.status = 'levelcleared';
-                 gs.level++; gs.levelTick = 0;
+                 gs.status = 'level_transition';
+                 gs.transitionTimer = 200;
                  showMessage(gs, "BOSS DESTROYED");
-                 setTimeout(() => { initMap(gs); gs.bombs++; showMessage(gs, THEMES[(gs.level-1)%4].name); gs.status = 'playing'; }, 3000); 
               }
            }
         }
 
+        // Check Normal Enemies if not hitting boss
         if (!bulletHit) {
           for (let i = gs.enemies.length - 1; i >= 0; i--) {
             let e = gs.enemies[i];
@@ -3995,6 +4034,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         if (bulletHit && b.type !== 'laser') gs.bullets.splice(j, 1);
       }
 
+      // --- ENEMY DEATH LOGIC ---
       for (let i = gs.enemies.length - 1; i >= 0; i--) {
           let e = gs.enemies[i];
           if (e.hp <= 0) {
@@ -4017,11 +4057,13 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       }
     };
 
+    // --- RENDER ENGINE ---
     const draw = () => {
       let gs = state.current;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      let theme = THEMES[(gs.level - 1) % 4];
+      let themeIdx = Math.floor((gs.level - 1) / 4) % THEMES.length;
+      let theme = THEMES[themeIdx];
       ctx.fillStyle = theme.water;
       ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
 
@@ -4044,7 +4086,8 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       const shadowOffset = 12;
       gs.enemies.forEach(e => { if (e.class !== 'boat') drawSprite(SPRITES[e.class === 'tiny' ? 'tinyFighter' : e.class], e.x + shadowOffset, e.y + shadowOffset, e.class === 'tiny' ? 2 : 3, true); });
       if (gs.boss) drawSprite(SPRITES.boss, gs.boss.x + shadowOffset*2, gs.boss.y + shadowOffset*2, 3, true);
-      if ((gs.status === 'playing' || gs.status === 'respawning') && gs.player.invuln % 10 < 5) {
+      
+      if ((gs.status === 'playing' || gs.status === 'respawning' || gs.status === 'level_transition') && gs.player.invuln % 10 < 5) {
          drawSprite(SPRITES.player, gs.player.x + shadowOffset, gs.player.y + shadowOffset, 3, true);
       }
 
@@ -4059,7 +4102,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
          ctx.fillText(pu.type.charAt(0).toUpperCase(), pu.x, pu.y + 4);
       });
 
-      if (gs.status === 'playing' && gs.player.invuln % 10 < 5) {
+      if ((gs.status === 'playing' || gs.status === 'level_transition') && gs.player.invuln % 10 < 5) {
         drawSprite(SPRITES.player, gs.player.x, gs.player.y, 3, false);
       } else if (gs.status === 'respawning' && gs.respawnTimer < 60) {
         ctx.fillStyle = '#0f0'; ctx.font = '40px "VT323", monospace'; ctx.textAlign = 'center'; ctx.fillText("READY", NATIVE_W/2, NATIVE_H/2);
@@ -4118,7 +4161,7 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
     loop();
 
     return () => cancelAnimationFrame(animationFrameId);
-  }, [audioCtx, onMenu]); 
+  }, [audioCtx, onMenu]);
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-auto bg-transparent p-6 md:p-12">
@@ -5284,7 +5327,7 @@ const handleReturnToMenu = useCallback(() => {
     window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'menuPlay' })); 
   }, []);
 
-const handleStart = async () => {
+  const handleStart = async () => {
     if (document.documentElement.requestFullscreen) {
       try { await document.documentElement.requestFullscreen(); } catch (err) {}
     }
@@ -5292,13 +5335,13 @@ const handleStart = async () => {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     audioContextRef.current = new AudioContext();
     
-    // FIX: Await the track builder before proceeding!
-    const bufs = await buildTracks(audioContextRef.current);
-    bgmBuffersRef.current = bufs;
-    
-    // Now start the menu and the music safely
+    buildTracks(audioContextRef.current).then(bufs => {
+      bgmBuffersRef.current = bufs;
+      // ADDED: Boot up the menu music as soon as the buffers finish rendering!
+      window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'menuPlay' }));
+    });
+
     setGameState('menu');
-    window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'menuPlay' }));
   };
 
   const handleGameSelect = (game) => {
