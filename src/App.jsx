@@ -3486,6 +3486,9 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
     score: 0,
     highScore: 0,
     lives: 3,
+    continues: 3,
+    gameOverOpt: 0,
+    lastNavTime: 0,
     nextLifeScore: 50000,
     world: 0,
     subLevel: 0,
@@ -3712,7 +3715,10 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
       gs.bullets = []; gs.enemyBullets = []; gs.player.invuln = 120; 
 
       if (gs.lives <= 0) {
-          gs.status = 'gameover'; window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Over' }));
+          gs.status = 'gameover';
+          gs.gameOverOpt = gs.continues > 0 ? 0 : 1; // Default to continue if credits exist
+          gs.lastNavTime = Date.now();
+          window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Over' }));
       } else {
         gs.status = 'respawning'; gs.respawnTimer = 120;
         gs.player.x = NATIVE_W / 2; gs.player.y = NATIVE_H - 80; gs.player.cooldown = 0;
@@ -3735,8 +3741,8 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
 
       if (keys['m'] || keys['M']) { onMenu(); return; }
 
-      if (gs.status === 'start' && keys['Enter']) {
-        gs.status = 'playing'; gs.score = 0; gs.lives = 3; gs.world = 0; gs.subLevel = 0; gs.loopMult = 1;
+if (gs.status === 'start' && keys['Enter']) {
+        gs.status = 'playing'; gs.score = 0; gs.lives = 3; gs.continues = 3; gs.world = 0; gs.subLevel = 0; gs.loopMult = 1;
         gs.bombs = 3; gs.weapon = 'twin'; gs.weaponLevel = 1; gs.satellites = [];
         gs.player = { x: NATIVE_W/2, y: NATIVE_H - 80, w: 45, h: 30, speed: 5, cooldown: 0, invuln: 120 };
         gs.bullets = []; gs.enemyBullets = []; gs.enemies = []; gs.powerups = []; gs.particles = []; gs.boss = null; gs.levelTick = 0;
@@ -3745,14 +3751,33 @@ const AirplaneGame = ({ audioCtx, onMenu }) => {
         window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Play' }));
       }
 
-      if ((gs.status === 'gameover' || gs.status === 'ending') && keys['Enter']) {
-        if (gs.status === 'ending') {
-            gs.world = 0; gs.subLevel = 0; gs.loopMult += 0.5; gs.status = 'playing'; gs.boss = null; gs.levelTick = 0;
-            initMap(gs); showMessage(gs, "HARD MODE INITIATED");
-            window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Play' }));
-        } else {
-            gs.status = 'start'; window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Start' }));
-        }
+      if (gs.status === 'ending' && keys['Enter']) {
+         gs.world = 0; gs.subLevel = 0; gs.loopMult += 0.5; gs.status = 'playing'; gs.boss = null; gs.levelTick = 0;
+         initMap(gs); showMessage(gs, "HARD MODE INITIATED");
+         window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Play' }));
+      }
+
+      if (gs.status === 'gameover') {
+         let now = Date.now();
+         if ((keys['w'] || keys['ArrowUp'] || keys['s'] || keys['ArrowDown']) && now - gs.lastNavTime > 200) {
+            gs.lastNavTime = now;
+            gs.gameOverOpt = gs.gameOverOpt === 0 ? 1 : 0;
+            if (gs.continues <= 0) gs.gameOverOpt = 1; 
+         }
+         if (keys['Enter'] && now - gs.lastNavTime > 200) {
+            gs.lastNavTime = now;
+            if (gs.gameOverOpt === 0 && gs.continues > 0) {
+               gs.continues--; gs.status = 'playing'; gs.lives = 3; gs.subLevel = 0; 
+               gs.bombs = 3; gs.weapon = 'twin'; gs.weaponLevel = 1; gs.satellites = [];
+               gs.player = { x: NATIVE_W/2, y: NATIVE_H - 80, w: 45, h: 30, speed: 5, cooldown: 0, invuln: 120 };
+               gs.bullets = []; gs.enemyBullets = []; gs.enemies = []; gs.powerups = []; gs.particles = []; gs.boss = null; gs.levelTick = 0;
+               initMap(gs); showMessage(gs, `${WORLDS[gs.world].name} - ${TIMES[gs.subLevel].name}`);
+               window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Play' }));
+            } else {
+               onMenu();
+               return;
+            }
+         }
       }
 
       // Environment Engine
