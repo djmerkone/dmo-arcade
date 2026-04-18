@@ -531,7 +531,15 @@ useEffect(() => {
       ctx.globalAlpha = 0.2; // Dim the background
       let sel = selectedIndex.current;
 
-      if (sel === 0) { // BATTLE TANK ZONE (Vector Grid)
+      if (sel === 0) { // 1942 (Ocean Waves)
+        ctx.fillStyle = '#0033aa'; ctx.fillRect(0, 0, 800, 600);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        for (let i = 0; i < 15; i++) {
+           let wy = ((gs.tick * 1.5) + (i * 80)) % 650 - 50;
+           let wx = (Math.sin(i * 45) * 400) + 400;
+           ctx.fillRect(wx, wy, 40 + (Math.cos(i) * 20), 8);
+        }
+      } else if (sel === 1) { // BATTLE TANK ZONE (Vector Grid)
         ctx.strokeStyle = 'rgba(0, 255, 0, 0.6)'; ctx.lineWidth = 2;
         ctx.beginPath();
         // Horizon line
