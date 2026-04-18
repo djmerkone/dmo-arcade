@@ -226,59 +226,36 @@ export class RobotronSprites {
         console.log("ROBOTRON VRAM: 100% CRT Phosphor Assets Forged.");
     }
 
-    // --- THE CRT BLOOM FORGE ---
+// --- CRISP PIXEL FORGE (No Bloom) ---
     forgePixelArt(pattern, palette) {
         const h = pattern.length; 
         const w = pattern[0].length;
         
         const canvas = document.createElement('canvas');
-        // We add padding to the canvas so the glowing "shadow blur" doesn't get clipped at the edges
-        const padding = 12; 
-        canvas.width = (w * this.scale) + (padding * 2); 
-        canvas.height = (h * this.scale) + (padding * 2);
+        // No extra padding needed since we removed the bloom/shadow
+        canvas.width = w * this.scale; 
+        canvas.height = h * this.scale;
         
         const ctx = canvas.getContext('2d');
 
-        // Pass 1: The Core Pixels (Solid, bright center)
+        // Draw crisp, flat, true 8-bit pixels
         for (let r = 0; r < h; r++) {
             for (let c = 0; c < w; c++) {
                 let char = pattern[r][c];
                 if (char !== '.') {
                     ctx.fillStyle = palette[char];
                     
-                    // CRT PHOSPHOR GLOW EFFECT
-                    // By applying a heavy shadow blur of the EXACT same color as the pixel,
-                    // it simulates the high-voltage bleed of a 1982 arcade monitor!
-                    ctx.shadowBlur = 10;
-                    ctx.shadowColor = palette[char];
-                    
+                    // The +0.5 prevents tiny rendering gaps between pixels when scaling
                     ctx.fillRect(
-                        padding + (c * this.scale), 
-                        padding + (r * this.scale), 
-                        this.scale + 0.5, // The +0.5 prevents rendering gaps between pixels
+                        c * this.scale, 
+                        r * this.scale, 
+                        this.scale + 0.5, 
                         this.scale + 0.5
                     );
                 }
             }
         }
         
-        // Pass 2: The Hot Core (Makes the very center of the pixel look white-hot)
-        ctx.shadowBlur = 0; // Turn off glow for the hot core
-        for (let r = 0; r < h; r++) {
-            for (let c = 0; c < w; c++) {
-                let char = pattern[r][c];
-                if (char !== '.') {
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; // Semi-transparent white
-                    ctx.fillRect(
-                        padding + (c * this.scale) + (this.scale * 0.25), 
-                        padding + (r * this.scale) + (this.scale * 0.25), 
-                        this.scale * 0.5, 
-                        this.scale * 0.5
-                    );
-                }
-            }
-        }
-
         return canvas;
     }
 

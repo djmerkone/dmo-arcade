@@ -114,11 +114,17 @@ export class Hulk extends Enemy {
         this.speed = 0.8 + (wave * 0.05); 
     } 
     update(state) {
-        // Hulks actively hunt humans first. If no humans exist, they wander toward the player.
-        let target = this.getClosest(this, state.humans);
+        let target = null;
+        
+        // GRACE PERIOD: Ignore humans for the first 2.5 seconds (150 ticks)
+        if (state.waveTick > 150) {
+            target = this.getClosest(this, state.humans);
+        }
+        
         if (target) {
             this.moveTowards(target.x, target.y, this.speed);
         } else {
+            // Wander toward player during grace period or if humans are gone
             this.moveTowards(state.player.x, state.player.y, this.speed * 0.5);
         }
 
@@ -150,8 +156,13 @@ export class Brain extends Enemy {
         this.speed = 2.0 + (wave * 0.1); 
     }
     update(state) {
-        // Brains hunt humans to mutate them.
-        let target = this.getClosest(this, state.humans);
+        let target = null;
+        
+        // GRACE PERIOD: Ignore humans for the first 2.5 seconds
+        if (state.waveTick > 150) {
+            target = this.getClosest(this, state.humans);
+        }
+        
         if (target) {
             this.moveTowards(target.x, target.y, this.speed);
             
@@ -168,7 +179,7 @@ export class Brain extends Enemy {
                 state.spawnParticles(target.x, target.y, '#00ffff', 'deflect');
             }
         } else {
-            // If all humans are dead/mutated, the Brain comes for YOU.
+            // If in grace period, or all humans are gone, hunt the player
             this.moveTowards(state.player.x, state.player.y, this.speed);
         }
     }
