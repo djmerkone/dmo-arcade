@@ -2,53 +2,110 @@
 
 export class RobotronSprites {
     constructor() {
-        this.image = new Image();
-        this.loaded = false;
-        this.scale = 2.5; 
-        
-        this.animations = {
-            player:   [[0, 0, 16, 16], [16, 0, 16, 16]],      
-            grunt:    [[0, 16, 16, 16], [16, 16, 16, 16]],    
-            hulk:     [[0, 32, 16, 16], [16, 32, 16, 16]],
-            human:    [[0, 48, 16, 16], [16, 48, 16, 16]],
-            prog:     [[0, 64, 16, 16], [16, 64, 16, 16]],
-            brain:    [[0, 80, 16, 16], [16, 80, 16, 16]],
-            spheroid: [[0, 96, 16, 16]],                      
-            enforcer: [[0, 112, 16, 16], [16, 112, 16, 16]],
-            electrode:[[0, 128, 16, 16]],
-            spark:    [[0, 144, 8, 8]],
-            bullet:   [[8, 144, 8, 8]]
-        };
+        this.cache = {};
+        this.scale = 3; 
     }
 
-    async loadAssets() {
-        return new Promise((resolve, reject) => {
-            // Because it's in the 'public' folder, we can just use the absolute path!
-            this.image.src = '/robotron/sprites.png'; 
-            
-            this.image.onload = () => {
-                this.loaded = true;
-                console.log("Williams Graphics ROMs: LOADED");
-                resolve();
-            };
-            this.image.onerror = () => {
-                console.error("Failed to load sprites.png");
-                reject();
-            };
-        });
+    initialize() {
+        // Player (White visor, blue body)
+        this.cache.player = this.forgePixelArt([
+            ".......",
+            "..WWW..",
+            "..W.W..",
+            ".WWWWW.",
+            "...B...",
+            "..BBB..",
+            ".B.B.B.",
+            ".B...B.",
+            "......."
+        ], { 'B': '#0000ff', 'W': '#ffffff' });
+
+        // Grunt (Red/Orange boxy frame)
+        this.cache.grunt = this.forgePixelArt([
+            ".......",
+            ".RRRRR.",
+            ".ROOOR.",
+            "RROOORR",
+            "RR...RR",
+            "RR...RR",
+            "......."
+        ], { 'R': '#ff0000', 'O': '#ffaa00' });
+
+        // Hulk (Indestructible Green/Yellow)
+        this.cache.hulk = this.forgePixelArt([
+            ".......",
+            "..GGG..",
+            ".GGGGG.",
+            "GGYGYGG",
+            "GGGGGGG",
+            ".G...G.",
+            ".GG.GG.",
+            "......."
+        ], { 'G': '#00ff00', 'Y': '#ffff00' });
+
+        // Brain (Magenta head, blue eyes)
+        this.cache.brain = this.forgePixelArt([
+            ".MMMMM.",
+            "MBBBBBM",
+            "MBMMMBM",
+            "MBBBBBM",
+            ".MMMMM.",
+            "..M.M..",
+            ".MM.MM."
+        ], { 'M': '#ff00ff', 'B': '#0000ff' });
+
+        // Electrode (Yellow plus)
+        this.cache.electrode = this.forgePixelArt([
+            "...Y...",
+            "..YYY..",
+            ".YYYYY.",
+            "YYYYYYY",
+            ".YYYYY.",
+            "..YYY..",
+            "...Y..."
+        ], { 'Y': '#ffff00' });
+
+        // Human (Pink)
+        this.cache.human = this.forgePixelArt([
+            "..PPP..",
+            ".PPPPP.",
+            "...P...",
+            "..PPP..",
+            ".P.P.P.",
+            ".P...P."
+        ], { 'P': '#ff66b2' });
+        
+        console.log("Foundry Assets Generated.");
+    }
+
+    forgePixelArt(pattern, palette) {
+        const h = pattern.length; const w = pattern[0].length;
+        const canvas = document.createElement('canvas');
+        canvas.width = w * this.scale; canvas.height = h * this.scale;
+        const ctx = canvas.getContext('2d');
+        for (let r = 0; r < h; r++) {
+            for (let c = 0; c < w; c++) {
+                let char = pattern[r][c];
+                if (char !== '.') {
+                    ctx.fillStyle = palette[char];
+                    ctx.fillRect(c * this.scale, r * this.scale, this.scale, this.scale);
+                }
+            }
+        }
+        return canvas;
+    }
+
+    loadAssets() {
+        this.initialize();
+        return Promise.resolve();
     }
 
     draw(ctx, name, x, y, tick = 0) {
-        if (!this.loaded) return;
-        const frames = this.animations[name] || this.animations['grunt'];
-        const frameIndex = Math.floor(tick / 10) % frames.length; 
-        const [sx, sy, sw, sh] = frames[frameIndex];
-
-        ctx.drawImage(
-            this.image, 
-            sx, sy, sw, sh,                                    
-            x - (sw * this.scale) / 2, y - (sh * this.scale) / 2, 
-            sw * this.scale, sh * this.scale                   
-        );
+        const img = this.cache[name] || this.cache['grunt'];
+        // Wobbly animation for movement
+        let offset = (Math.floor(tick / 8) % 2 === 0) ? 2 : -2;
+        if (name === 'electrode' || name === 'bullet') offset = 0;
+        
+        ctx.drawImage(img, x - img.width/2, y - img.height/2 + offset);
     }
 }
