@@ -127,4 +127,86 @@ export class SpriteManager {
         ctx.fillStyle = bodyPaint;
         ctx.beginPath();
         ctx.moveTo(-20, 4);
-        ctx.bezierCurveTo(-10, -2, 10
+        ctx.bezierCurveTo(-10, -2, 10, -2, 20, 4);
+        ctx.lineTo(16, 10);
+        ctx.lineTo(-16, 10);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+
+        // 2. Fuselage
+        ctx.beginPath();
+        ctx.ellipse(0, 2, 5, 12, 0, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+
+        // 3. Tail
+        ctx.beginPath();
+        ctx.moveTo(-6, 12); ctx.lineTo(6, 12); ctx.lineTo(0, 16); ctx.closePath();
+        ctx.fill();
+
+        // 4. Hinomaru (Red Sun Decal)
+        ctx.fillStyle = '#c53030';
+        ctx.beginPath(); ctx.arc(-12, 5, 3, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(12, 5, 3, 0, Math.PI*2); ctx.fill();
+
+        // 5. Cockpit
+        ctx.fillStyle = '#2c5282';
+        ctx.beginPath(); ctx.arc(0, 0, 2, 0, Math.PI*2); ctx.fill();
+
+        return canvas;
+    }
+
+    // --- THE FORGE: PROJECTILES ---
+    forgeBullet(coreColor, glowColor, isRound = false) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 16; canvas.height = 16;
+        const ctx = canvas.getContext('2d', { alpha: true });
+        ctx.translate(8, 8);
+
+        ctx.shadowBlur = 6;
+        ctx.shadowColor = glowColor;
+        ctx.fillStyle = coreColor;
+
+        ctx.beginPath();
+        if (isRound) {
+            ctx.arc(0, 0, 3, 0, Math.PI * 2); // Enemy orb bullet
+        } else {
+            ctx.ellipse(0, 0, 1.5, 6, 0, 0, Math.PI * 2); // Player tracer bullet
+        }
+        ctx.fill();
+        
+        // Inner white hot core
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        if (isRound) ctx.arc(0, 0, 1, 0, Math.PI * 2);
+        else ctx.ellipse(0, 0, 0.5, 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        return canvas;
+    }
+
+    // Fast Propeller Renderer (Drawn dynamically so it animates!)
+    drawPropeller(ctx, x, y, tick) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(tick * 0.5); // Spin speed
+        
+        ctx.fillStyle = 'rgba(200, 200, 200, 0.4)'; // Motion blur
+        ctx.beginPath();
+        ctx.arc(0, 0, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Flashing yellow prop tips
+        if (tick % 4 < 2) {
+            ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, 6, -0.5, 0.5);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(0, 0, 6, Math.PI - 0.5, Math.PI + 0.5);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+}
