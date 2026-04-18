@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import BattlezoneGame from './batzon';
 
 // --- ASSET LOADER --- 
 const ASSETS = {
@@ -607,6 +608,7 @@ const GameMenu = ({ audioCtx, onSelect }) => {
       }
       
       const opts = [
+          { text: "BATTLE TANK ZONE", game: 'batzon' },
           { text: "GALAXY FIGHTER", game: 'galaga' },
           { text: "STATION COMMANDO", game: 'commando' },
           { text: "CLASSIC SNAKEZ", game: 'snake' },
@@ -5489,6 +5491,7 @@ const handleStart = async () => {
   const handleGameSelect = (game) => {
     setGameState(game);
     if (game === 'galaga') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'galagaStart' }));
+    else if (game === 'batzon') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
     else if (game === 'commando') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'commandoStart' }));
     else if (game === 'snake') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'snakeStart' }));
     else if (game === 'asteroids') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' })); // Asteroids handles its own audio
@@ -5620,6 +5623,7 @@ const handleStart = async () => {
 
             {/* UPDATED: Added audioCtx={audioContextRef.current} */}
             {gameState === 'menu' && <GameMenu audioCtx={audioContextRef.current} onSelect={handleGameSelect} />}            
+            {gameState === 'batzon' && <BattlezoneGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'galaga' && <GalagaGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />} 
             {gameState === 'commando' && <CommandoGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'snake' && <SnakeGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
