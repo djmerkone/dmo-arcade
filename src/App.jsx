@@ -361,8 +361,8 @@ const BootScreen = () => {
       "Loading BASS_OS.SYS..."
     ];
 
-    // Programmatically generate 60 lines of fake memory parsing!
-    for(let i = 0; i < 60; i++) {
+    // Programmatically generate 100 lines of fake memory parsing!
+    for(let i = 0; i < 100; i++) {
         let addr = (0x00A1 + i * 6).toString(16).toUpperCase().padStart(4, '0');
         let hex = Array.from({length: 4}, () => Math.floor(Math.random()*256).toString(16).toUpperCase().padStart(2, '0')).join(' ');
         bootLines.push(`0x${addr}: ${hex}  LD A, (HL)`);
