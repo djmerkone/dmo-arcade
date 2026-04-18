@@ -463,19 +463,21 @@ const GameMenu = ({ audioCtx, onSelect }) => {
     }
   };
 
-  useEffect(() => {
+useEffect(() => {
     const handleKeyDown = e => {
       const now = Date.now();
       if (e.key === 'ArrowUp' || e.key === 'w') {
           if (now - lastNavTime.current < 150) return; 
           lastNavTime.current = now;
-          selectedIndex.current = (selectedIndex.current - 1 + 10) % 10; 
+          // FIX: Changed to 11 to account for the new game!
+          selectedIndex.current = (selectedIndex.current - 1 + 11) % 11; 
           playAudio('scroll');
       }
       if (e.key === 'ArrowDown' || e.key === 's') {
           if (now - lastNavTime.current < 150) return; 
           lastNavTime.current = now;
-          selectedIndex.current = (selectedIndex.current + 1) % 10; 
+          // FIX: Changed to 11 to account for the new game!
+          selectedIndex.current = (selectedIndex.current + 1) % 11; 
           playAudio('scroll');
       }
       if (e.key === 'Enter') {
@@ -483,7 +485,8 @@ const GameMenu = ({ audioCtx, onSelect }) => {
           lastNavTime.current = now;
           playAudio('select');
           
-          const games = ['galaga', 'commando', 'snake', 'asteroids', 'defender', 'oregon', 'invaders', '1941', 'robotron', 'controller'];
+          // FIX: Added 'batzon' to the front of the array so the visual list perfectly matches the data list!
+          const games = ['batzon', 'galaga', 'commando', 'snake', 'asteroids', 'defender', 'oregon', 'invaders', '1941', 'robotron', 'controller'];
           setTimeout(() => onSelect(games[selectedIndex.current]), 200);
       }
     };
