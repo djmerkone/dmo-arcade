@@ -1,5 +1,4 @@
 // src/robotron/Sprites.js
-import spritesheetUrl from './sprites.png'; // <--- VITE NATIVE IMPORT
 
 export class RobotronSprites {
     constructor() {
@@ -24,7 +23,9 @@ export class RobotronSprites {
 
     async loadAssets() {
         return new Promise((resolve, reject) => {
-            this.image.src = spritesheetUrl; // <--- USES THE IMPORTED URL
+            // Because it's in the 'public' folder, we can just use the absolute path!
+            this.image.src = '/robotron/sprites.png'; 
+            
             this.image.onload = () => {
                 this.loaded = true;
                 console.log("Williams Graphics ROMs: LOADED");

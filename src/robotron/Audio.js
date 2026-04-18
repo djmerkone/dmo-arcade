@@ -1,34 +1,23 @@
 // src/robotron/Audio.js
-import shootSfx from './sounds/robotron_shoot.wav';
-import gruntDestroyedSfx from './sounds/robotron_grunt_destroyed.wav';
-import rescueSfx from './sounds/robotron_human_rescued.wav';
-import humanKilledSfx from './sounds/robotron_human_killed.wav';
-import hulkShotSfx from './sounds/robotron_hulk_shot.wav';
-import electrodeDestroyedSfx from './sounds/robotron_electrode_destroyed.wav';
-import brainDestroyedSfx from './sounds/robotron_brain_destroyed.wav';
-import enforcerDestroyedSfx from './sounds/robotron_enforcer_destroyed.wav';
-import spheroidDestroyedSfx from './sounds/robotron_spheroid_destroyed.wav';
-import startSfx from './sounds/robotron_start.wav';
-import playerDeathSfx from './sounds/robotron_death.wav';
 
 export class WilliamsAudio {
     constructor(audioCtx) {
         this.ctx = audioCtx;
         this.buffers = {};
         
-        // Using the securely bundled Vite paths
+        // Because these are in the public folder, Vite will serve them at these exact paths!
         this.soundPaths = {
-            shoot: shootSfx,
-            gruntDestroyed: gruntDestroyedSfx,
-            rescue: rescueSfx,
-            humanKilled: humanKilledSfx,
-            hulkShot: hulkShotSfx,
-            electrodeDestroyed: electrodeDestroyedSfx,
-            brainDestroyed: brainDestroyedSfx,
-            enforcerDestroyed: enforcerDestroyedSfx,
-            spheroidDestroyed: spheroidDestroyedSfx,
-            start: startSfx,
-            playerDeath: playerDeathSfx
+            shoot: '/robotron/sounds/robotron_shoot.wav',
+            gruntDestroyed: '/robotron/sounds/robotron_grunt_destroyed.wav',
+            rescue: '/robotron/sounds/robotron_human_rescued.wav',
+            humanKilled: '/robotron/sounds/robotron_human_killed.wav',
+            hulkShot: '/robotron/sounds/robotron_hulk_shot.wav',
+            electrodeDestroyed: '/robotron/sounds/robotron_electrode_destroyed.wav',
+            brainDestroyed: '/robotron/sounds/robotron_brain_destroyed.wav',
+            enforcerDestroyed: '/robotron/sounds/robotron_enforcer_destroyed.wav',
+            spheroidDestroyed: '/robotron/sounds/robotron_spheroid_destroyed.wav',
+            start: '/robotron/sounds/robotron_start.wav',
+            playerDeath: '/robotron/sounds/robotron_death.wav'
         };
     }
 
