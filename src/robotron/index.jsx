@@ -50,17 +50,24 @@ export default function RobotronGame({ audioCtx, onMenu }) {
     bootGame();
 
     const keys = {};
-    const handleKeyDown = e => { 
+const handleKeyDown = e => { 
         if (!isReady || !engine) return;
         if (e.key === ' ') e.preventDefault(); 
         keys[e.key.toLowerCase()] = true; 
-        if(e.key.toLowerCase() === 'm') onMenu();
+        
+        // --- ESCAPE HATCH: 'M' KEY ---
+        if(e.key.toLowerCase() === 'm') {
+            onMenu();
+            return; // Halt further input processing
+        }
+        
         if(e.key === 'Enter' || e.key.toLowerCase() === 'enter') {
             if (engine.state.status === 'start' || engine.state.status === 'gameover') {
                 engine.reset(); engine.state.status = 'playing'; engine.startWave();
             }
         }
     };
+    
     const handleKeyUp = e => { keys[e.key.toLowerCase()] = false; };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -73,13 +80,26 @@ export default function RobotronGame({ audioCtx, onMenu }) {
         const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
         const gp = gamepads.find(g => g !== null && g.connected);
 
-        if (gp) {
+if (gp) {
+            // --- ESCAPE HATCH: SELECT BUTTON (Button 8) ---
+            if (gp.buttons[8]?.pressed) {
+                onMenu();
+                return; // Instantly kill the render loop and return to the router
+            }
+
+            // Start Button (Button 9 or 7) -> Start/Restart Game
             if (gp.buttons[9]?.pressed || gp.buttons[7]?.pressed) {
                 if (engine.state.status === 'start' || engine.state.status === 'gameover') {
                     engine.reset(); engine.state.status = 'playing'; engine.startWave();
                 }
             }
-            if (gp.buttons[0]?.pressed || gp.buttons[1]?.pressed || gp.buttons[2]?.pressed || gp.buttons[7]?.pressed) virtualKeys[' '] = true;
+            
+            // Action Buttons -> Map to Spacebar (Fire)
+            if (gp.buttons[0]?.pressed || gp.buttons[1]?.pressed || gp.buttons[2]?.pressed || gp.buttons[7]?.pressed) {
+                virtualKeys[' '] = true;
+            }
+            
+            // D-Pad & Analog -> Map to WASD (Move)
             if (gp.axes[0] < -0.3 || gp.buttons[14]?.pressed) virtualKeys['a'] = true; 
             if (gp.axes[0] >  0.3 || gp.buttons[15]?.pressed) virtualKeys['d'] = true; 
             if (gp.axes[1] < -0.3 || gp.buttons[12]?.pressed) virtualKeys['w'] = true; 
