@@ -25,11 +25,11 @@ export default function RobotronGame({ audioCtx, onMenu }) {
         engine = new RobotronEngine((actionType, enemyType) => {
             if (actionType === 'shoot') audio.playShoot();
             if (actionType === 'boom') audio.playExplosion(enemyType); 
+            if (actionType === 'rescue') audio.playHumanRescue();
             if (actionType === 'spawn') audio.playSpawnMaterialize();
             if (actionType === 'playerDeath') audio.playPlayerDeath();
         });
         
-        // --- FULLSCREEN RESIZE BINDING ---
         const handleResize = () => {
             if (!containerRef.current || !engine) return;
             const rect = containerRef.current.getBoundingClientRect();
@@ -39,7 +39,7 @@ export default function RobotronGame({ audioCtx, onMenu }) {
             engine.HEIGHT = rect.height;
         };
         window.addEventListener('resize', handleResize);
-        handleResize(); // Trigger immediately to set initial full screen
+        handleResize(); 
 
         setIsReady(true);
         loop(); 
@@ -68,7 +68,6 @@ export default function RobotronGame({ audioCtx, onMenu }) {
     const loop = () => {
         if (!engine) return;
 
-        // USB Gamepad Poller
         const virtualKeys = { ...keys };
         const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
         const gp = gamepads.find(g => g !== null && g.connected);
@@ -89,10 +88,9 @@ export default function RobotronGame({ audioCtx, onMenu }) {
         const state = engine.update(virtualKeys);
         
         // PHOSPHOR TRAIL RENDERER
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)'; 
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; 
         ctx.fillRect(0, 0, engine.WIDTH, engine.HEIGHT);
 
-        // GLOBAL SCREEN FLASH
         if (state.flash > 0) {
             ctx.fillStyle = `rgba(255, 0, 0, ${state.flash / 15})`;
             ctx.fillRect(0, 0, engine.WIDTH, engine.HEIGHT);
@@ -110,25 +108,24 @@ export default function RobotronGame({ audioCtx, onMenu }) {
             
             // --- WAVE TRANSITION ANIMATION ---
             if (state.transitionTimer > 0) {
-                // Hyper flashing text
                 ctx.fillStyle = (Math.floor(state.transitionTimer / 4) % 2 === 0) ? '#0ff' : '#f0f'; 
                 ctx.font = '80px "VT323"'; ctx.textAlign = 'center';
                 ctx.fillText(`WAVE ${state.wave} COMPLETED`, engine.WIDTH/2, engine.HEIGHT/2);
             }
             
-            // --- MATERIALIZATION ANIMATION ---
+            // --- MATERIALIZATION ANIMATION (COLLAPSING BOXES) ---
             else if (state.spawnTimer > 0) {
-                let progress = 1 - (state.spawnTimer / 90); // 0.0 to 1.0
-                let boxSize = (1 - progress) * 400; // Collapses from massive 400px down to 0
+                let progress = state.spawnTimer / 90; // 1.0 down to 0.0
+                let boxSize1 = progress * 600; 
+                let boxSize2 = progress * 300;
                 
-                ctx.lineWidth = 4;
+                ctx.lineWidth = 6;
                 state.enemies.forEach(e => {
-                    ctx.strokeStyle = e.type === 'hulk' ? '#0f0' : (e.type === 'brain' ? '#f0f' : '#f00');
-                    // Draw multiple expanding/collapsing geometric boxes!
-                    ctx.strokeRect(e.x - boxSize/2, e.y - boxSize/2, boxSize, boxSize);
-                    ctx.strokeRect(e.x - boxSize, e.y - boxSize, boxSize*2, boxSize*2);
+                    // Hyper-flashing concentric boxes
+                    ctx.strokeStyle = (Math.floor(state.tick / 2) % 2 === 0) ? '#fff' : (e.type === 'hulk' ? '#0f0' : '#f00');
+                    ctx.strokeRect(e.x - boxSize1/2, e.y - boxSize1/2, boxSize1, boxSize1);
+                    ctx.strokeRect(e.x - boxSize2/2, e.y - boxSize2/2, boxSize2, boxSize2);
                 });
-                
                 sprites.draw(ctx, 'player', state.player.x, state.player.y, state.tick);
             } 
             
@@ -138,7 +135,6 @@ export default function RobotronGame({ audioCtx, onMenu }) {
                 state.humans.forEach(h => sprites.draw(ctx, 'human', h.x, h.y, state.tick));
                 state.enemies.forEach(e => sprites.draw(ctx, e.type, e.x, e.y, state.tick));
 
-                // Laser Tracers
                 ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 6; ctx.lineCap = 'round';
                 ctx.beginPath();
                 state.bullets.forEach(b => {
@@ -151,21 +147,42 @@ export default function RobotronGame({ audioCtx, onMenu }) {
                 }
             }
 
-            // --- THE SPREADING SLICE PARTICLES ---
+            // --- THE SPREADING WILLIAMS GEOMETRY ---
             state.particles.forEach(p => {
-                ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
-                if (p.type === 'slice') {
+                let progress = 1 - (p.life / p.maxLife); // 0.0 to 1.0
+                ctx.globalAlpha = Math.max(0, 1 - progress);
+                
+                if (p.type === 'text') {
+                    ctx.fillStyle = '#0ff';
+                    ctx.font = '30px "VT323"';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(p.text, p.x, p.y - (progress * 60)); // Text floats up
+                } 
+                else if (p.type === 'enemy_death') {
+                    let size = progress * 150; // Rapidly expanding box
                     ctx.strokeStyle = p.color;
-                    ctx.lineWidth = 5; // Thick arcade lines
-                    ctx.beginPath();
-                    let endX = p.x + Math.cos(p.angle) * p.length;
-                    let endY = p.y + Math.sin(p.angle) * p.length;
-                    ctx.moveTo(p.x, p.y);
-                    ctx.lineTo(endX, endY);
+                    ctx.lineWidth = 6;
+                    ctx.strokeRect(p.x - size/2, p.y - size/2, size, size);
+                    ctx.beginPath(); // Expanding X inside the box
+                    ctx.moveTo(p.x - size/2, p.y - size/2); ctx.lineTo(p.x + size/2, p.y + size/2);
+                    ctx.moveTo(p.x - size/2, p.y + size/2); ctx.lineTo(p.x + size/2, p.y - size/2);
                     ctx.stroke();
-                } else {
+                } 
+                else if (p.type === 'player_death') {
+                    let size = progress * 1000; // Screen-clearing massive cross
+                    ctx.strokeStyle = (Math.floor(state.tick / 2) % 2 === 0) ? '#fff' : '#f00'; 
+                    ctx.lineWidth = 20;
+                    ctx.beginPath();
+                    ctx.moveTo(p.x - size, p.y); ctx.lineTo(p.x + size, p.y);
+                    ctx.moveTo(p.x, p.y - size); ctx.lineTo(p.x, p.y + size);
+                    ctx.moveTo(p.x - size, p.y - size); ctx.lineTo(p.x + size, p.y + size);
+                    ctx.moveTo(p.x - size, p.y + size); ctx.lineTo(p.x + size, p.y - size);
+                    ctx.stroke();
+                    ctx.strokeRect(p.x - size/2, p.y - size/2, size, size);
+                }
+                else if (p.type === 'dot') {
                     ctx.fillStyle = p.color;
-                    ctx.fillRect(p.x, p.y, 6, 6); // Chunky shrapnel
+                    ctx.fillRect(p.x, p.y, 8, 8); // Huge shrapnel chunks
                 }
             });
             ctx.globalAlpha = 1.0;
@@ -191,7 +208,7 @@ export default function RobotronGame({ audioCtx, onMenu }) {
     };
 
     return () => {
-        window.removeEventListener('resize', () => {}); // cleanup handled implicitly by unmount
+        window.removeEventListener('resize', () => {});
         cancelAnimationFrame(animationFrameId);
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('keyup', handleKeyUp);
@@ -199,7 +216,6 @@ export default function RobotronGame({ audioCtx, onMenu }) {
   }, [audioCtx, onMenu]);
 
   return (
-    // We removed all CSS constraints! It will stretch to fit the absolute container.
     <div ref={containerRef} className="absolute inset-0 z-20 bg-black pointer-events-auto overflow-hidden">
       {!isReady && (
          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black bg-opacity-90">

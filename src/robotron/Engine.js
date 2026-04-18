@@ -3,7 +3,6 @@ import { WaveDirector } from './Entities';
 
 export class RobotronEngine {
     constructor(playSoundCallback) {
-        // Default to 1080p, but React will override this instantly on boot
         this.WIDTH = 1920; 
         this.HEIGHT = 1080;
         this.playSound = playSoundCallback;
@@ -17,7 +16,7 @@ export class RobotronEngine {
             WIDTH: this.WIDTH, HEIGHT: this.HEIGHT,
             player: { x: this.WIDTH/2, y: this.HEIGHT/2, speed: 6, cooldown: 0, invuln: 0, facingX: 1, facingY: 0 },
             bullets: [], enemies: [], humans: [], particles: [], electrodes: [],
-            spawnTimer: 0, transitionTimer: 0, flash: 0
+            spawnTimer: 0, transitionTimer: 0, flash: 0, humanMultiplier: 0
         };
     }
 
@@ -26,12 +25,12 @@ export class RobotronEngine {
         this.state.player.y = this.HEIGHT/2;
         this.state.bullets = [];
         this.state.particles = [];
+        this.state.humanMultiplier = 0; // Resets human rescue combo each wave
         
         // Massive 1.5 second materialization phase
         this.state.spawnTimer = 90; 
         this.playSound('spawn');
         
-        // Update director boundaries in case window was resized
         this.director.WIDTH = this.WIDTH;
         this.director.HEIGHT = this.HEIGHT;
         this.director.spawnWave(this.state.wave, this.state);
@@ -50,13 +49,13 @@ export class RobotronEngine {
                 this.state.wave++;
                 this.startWave();
             }
-            return this.state; // Freeze gameplay during transition!
+            return this.state; 
         }
 
         // --- MATERIALIZATION PHASE ---
         if (this.state.spawnTimer > 0) {
             this.state.spawnTimer--;
-            return this.state; // Freeze gameplay while enemies warp in!
+            return this.state; 
         }
 
         // --- FULL SPEED MOVEMENT & FIRING ---
@@ -85,7 +84,27 @@ export class RobotronEngine {
             this.playSound('shoot');
         }
 
-        // --- COLLISION LOGIC ---
+        // --- HUMAN RESCUE LOGIC (RESTORED!) ---
+        this.state.humans.forEach(h => {
+            h.timer++;
+            // Wander aimlessly
+            if (h.timer > 60) { h.vx = (Math.random() - 0.5) * 2; h.vy = (Math.random() - 0.5) * 2; h.timer = 0; }
+            h.x += h.vx || 0; h.y += h.vy || 0;
+            h.x = Math.max(20, Math.min(this.WIDTH-20, h.x)); h.y = Math.max(20, Math.min(this.HEIGHT-20, h.y));
+            
+            // Player Collision (Rescue)
+            if (Math.hypot(p.x - h.x, p.y - h.y) < 30) {
+                h.active = false; 
+                this.state.humanMultiplier = Math.min(5000, this.state.humanMultiplier + 1000);
+                this.state.score += this.state.humanMultiplier;
+                this.playSound('rescue'); 
+                // Spawn floating text!
+                this.spawnParticles(h.x, h.y, null, 'text', this.state.humanMultiplier.toString());
+            }
+        });
+        this.state.humans = this.state.humans.filter(h => h.active);
+
+        // --- BULLET & ENEMY COLLISION LOGIC ---
         this.state.bullets.forEach(b => { b.x += b.vx; b.y += b.vy; b.life--; });
         this.state.bullets = this.state.bullets.filter(b => b.life > 0);
 
@@ -105,7 +124,6 @@ export class RobotronEngine {
                     b.life = 0;
                     if (e.hp >= 9999) { 
                         this.playSound('boom', e.type); 
-                        // Hulks deflect with small sparks
                         this.spawnParticles(b.x, b.y, '#0f0', 'deflect'); 
                         let pushMag = Math.hypot(b.vx, b.vy); e.x += (b.vx/pushMag) * 8; e.y += (b.vy/pushMag) * 8;
                     } else {
@@ -118,18 +136,20 @@ export class RobotronEngine {
                     }
                 }
             });
+            this.state.electrodes.forEach(el => {
+                if (el.active && Math.hypot(b.x - el.x, b.y - el.y) < 24) {
+                    b.life = 0; el.active = false; this.playSound('boom', 'electrode');
+                    this.spawnParticles(el.x, el.y, '#ff0', 'enemy_death');
+                }
+            });
         });
 
         this.state.enemies = this.state.enemies.filter(e => e.active);
+        this.state.electrodes = this.state.electrodes.filter(el => el.active);
         
-        // --- HYPER PARTICLE MATH ---
+        // --- PARTICLE LOGIC ---
         this.state.particles.forEach(pt => { 
-            if (pt.type === 'slice') {
-                // Slices move AND stretch out
-                pt.x += Math.cos(pt.angle) * pt.speed;
-                pt.y += Math.sin(pt.angle) * pt.speed;
-                pt.length += 1.5; 
-            } else {
+            if (pt.type === 'dot' || pt.type === 'deflect') {
                 pt.x += pt.vx; pt.y += pt.vy; 
                 pt.vx *= 0.92; pt.vy *= 0.92; 
             }
@@ -138,7 +158,7 @@ export class RobotronEngine {
         this.state.particles = this.state.particles.filter(pt => pt.life > 0);
 
         // --- WAVE COMPLETE CHECK ---
-        if (activeGrunts === 0 && this.state.transitionTimer === 0) {
+        if (activeGrunts === 0 && this.state.transitionTimer === 0 && this.state.spawnTimer === 0) {
             this.state.transitionTimer = 100; // Triggers the flashing level-end sequence!
         }
 
@@ -154,36 +174,21 @@ export class RobotronEngine {
         else this.state.player.invuln = 120;
     }
 
-    spawnParticles(x, y, color, type) {
+    spawnParticles(x, y, color, type, extraData = '') {
         if (type === 'enemy_death') {
-            // THE CLASSIC WILLIAMS SLICES (8-Way spreading lines)
+            this.state.particles.push({ type: 'enemy_death', x, y, life: 15, maxLife: 15, color });
             for(let i=0; i<8; i++) {
-                this.state.particles.push({
-                    type: 'slice', x, y, angle: (i/8)*Math.PI*2, speed: 10 + Math.random()*5, length: 10, life: 35, maxLife: 35, color
-                });
-            }
-            // Shrapnel chunks
-            for(let i=0; i<12; i++) {
-                this.state.particles.push({
-                    type: 'dot', x, y, vx: (Math.random()-0.5)*20, vy: (Math.random()-0.5)*20, life: 25, maxLife: 25, color
-                });
+                this.state.particles.push({ type: 'dot', x, y, vx: (Math.random()-0.5)*25, vy: (Math.random()-0.5)*25, life: 25, maxLife: 25, color });
             }
         } else if (type === 'player_death') {
-            // MASSIVE 16-Way spreading lines for player death
-            for(let i=0; i<16; i++) {
-                this.state.particles.push({
-                    type: 'slice', x, y, angle: (i/16)*Math.PI*2, speed: 18 + Math.random()*8, length: 20, life: 60, maxLife: 60, color: '#fff'
-                });
-            }
-            for(let i=0; i<30; i++) {
-                this.state.particles.push({
-                    type: 'dot', x, y, vx: (Math.random()-0.5)*30, vy: (Math.random()-0.5)*30, life: 40, maxLife: 40, color: '#ff0'
-                });
-            }
+            this.state.particles.push({ type: 'player_death', x, y, life: 50, maxLife: 50, color: '#fff' });
         } else if (type === 'deflect') {
             for(let i=0; i<5; i++) {
-                this.state.particles.push({ type: 'dot', x, y, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10, life: 10, maxLife: 10, color });
+                this.state.particles.push({ type: 'dot', x, y, vx: (Math.random()-0.5)*15, vy: (Math.random()-0.5)*15, life: 15, maxLife: 15, color });
             }
+        } else if (type === 'text') {
+            // Floating score multiplier text
+            this.state.particles.push({ type: 'text', x, y, text: extraData, life: 60, maxLife: 60 });
         }
     }
 }
