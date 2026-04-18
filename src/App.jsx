@@ -361,8 +361,8 @@ const BootScreen = () => {
       "Loading BASS_OS.SYS..."
     ];
 
-    // Programmatically generate 40 lines of fake memory parsing!
-    for(let i = 0; i < 40; i++) {
+    // Programmatically generate 60 lines of fake memory parsing!
+    for(let i = 0; i < 60; i++) {
         let addr = (0x00A1 + i * 6).toString(16).toUpperCase().padStart(4, '0');
         let hex = Array.from({length: 4}, () => Math.floor(Math.random()*256).toString(16).toUpperCase().padStart(2, '0')).join(' ');
         bootLines.push(`0x${addr}: ${hex}  LD A, (HL)`);
@@ -417,13 +417,15 @@ const BootScreen = () => {
   }, []);
 
   return (
-    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-auto bg-black">
+    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-auto bg-black overflow-hidden">
       <canvas ref={canvasRef} width={800} height={600} className="w-full h-full object-fill bg-transparent cursor-none absolute inset-0 z-10" />
       
-      {/* Loading GIF Overlay in the bottom right corner */}
-      <div className="absolute bottom-8 right-12 z-20 opacity-80">
-         <img src="load.gif" alt="Loading..." className="w-16 h-16 object-contain mix-blend-screen" />
-      </div>
+      {/* Full-Screen Loading GIF Overlay for a CRT scanning/glow effect */}
+      <img 
+         src="load.gif" 
+         alt="Loading..." 
+         className="absolute inset-0 w-full h-full object-cover mix-blend-screen opacity-40 z-20 pointer-events-none" 
+      />
     </div>
   );
 };
