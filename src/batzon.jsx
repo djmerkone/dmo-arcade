@@ -207,14 +207,18 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
         }
     };
 
-    // --- 3D MATH CORE ---
+// --- 3D MATH CORE ---
     const transformPoint = (px, py, pz, objX, objZ, objAngle, camX, camZ, camAngle, shakeOffset) => {
       let cosO = Math.cos(objAngle); let sinO = Math.sin(objAngle);
-      let rx = px * cosO - pz * sinO; let rz = px * sinO + pz * cosO;
+      // FIX: Corrected object local rotation matrix
+      let rx = px * cosO + pz * sinO; 
+      let rz = -px * sinO + pz * cosO;
       let wx = rx + objX; let wz = rz + objZ;
       let dx = wx - camX; let dz = wz - camZ;
-      let cosC = Math.cos(-camAngle); let sinC = Math.sin(-camAngle);
-      let cx = dx * cosC - dz * sinC; let cz = dx * sinC + dz * cosC;
+      // FIX: Corrected camera space rotation matrix
+      let cosC = Math.cos(camAngle); let sinC = Math.sin(camAngle);
+      let cx = dx * cosC - dz * sinC; 
+      let cz = dx * sinC + dz * cosC;
       return { x: cx + shakeOffset, y: py + shakeOffset, z: cz };
     };
 
@@ -225,7 +229,8 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
         let x3 = x2; let y3 = y2 * cx - z2 * sx; let z3 = y2 * sx + z2 * cx;
         let wx = x3 + pX; let wy = y3 + pY; let wz = z3 + pZ;
         let dx = wx - camX; let dz = wz - camZ;
-        let cosC = Math.cos(-camAngle), sinC = Math.sin(-camAngle);
+        // FIX: Corrected camera space rotation matrix for particles
+        let cosC = Math.cos(camAngle), sinC = Math.sin(camAngle);
         return { x: (dx * cosC - dz * sinC) + shakeOffset, y: wy + shakeOffset, z: (dx * sinC + dz * cosC) };
     };
 
@@ -247,7 +252,7 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
       }
 
       if (gs.status === 'start' && keys['enter']) {
-        gs.status = 'playing'; gs.score = 0; gs.wave = 1; gs.waveTimer = 180;
+        gs.status = 'playing'; gs.score = 0; gs.wave = 0; gs.waveTimer = 180;
         gs.player = { x: 0, z: 0, vx: 0, vz: 0, bodyAngle: 0, turretAngle: 0, cooldown: 0, hp: 5, maxHp: 5, invuln: 0, shake: 0 };
         let env = buildEnvironment();
         gs.mountains = env.mts; gs.stars = env.strs; gs.obstacles = env.obs;
@@ -653,7 +658,9 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
       ctx.stroke();
 
       if (gs.enemies.length === 0 && gs.waveTimer > 0) {
-         if (gs.waveTimer > 120) drawCRTText(ctx, "AREA SECURED", NATIVE_W/2, NATIVE_H/2 - 80, '#0f0', '50px "VT323", monospace');
+         // FIX: Check if gs.wave > 0 before printing "AREA SECURED"
+         if (gs.wave > 0 && gs.waveTimer > 120) drawCRTText(ctx, "AREA SECURED", NATIVE_W/2, NATIVE_H/2 - 80, '#0f0', '50px "VT323", monospace');
+         
          if (gs.waveTimer < 100 && Math.floor(gs.waveTimer / 15) % 2 === 0) {
              drawCRTText(ctx, `WAVE ${gs.wave + 1} APPROACHING`, NATIVE_W/2, NATIVE_H/2 - 80, '#f00', '40px "VT323", monospace');
          }
