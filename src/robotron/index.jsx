@@ -17,7 +17,7 @@ export default function RobotronGame({ audioCtx, onMenu }) {
     const audio = new WilliamsAudio(audioCtx);
     const sprites = new RobotronSprites();
     
-    let engine; // <--- THIS is the variable the loop uses
+    let engine; 
     let animationFrameId;
 
     const bootGame = async () => {
@@ -27,7 +27,6 @@ export default function RobotronGame({ audioCtx, onMenu }) {
                 audio.loadAssets()
             ]);
             
-            // FIX: Removed "const" so it links to the 'let engine' variable above!
             engine = new RobotronEngine((actionType, enemyType) => {
                 if (actionType === 'shoot') audio.playShoot();
                 if (actionType === 'boom') audio.playExplosion(enemyType); 
@@ -52,7 +51,9 @@ export default function RobotronGame({ audioCtx, onMenu }) {
         if (e.key === ' ') e.preventDefault(); 
         keys[e.key.toLowerCase()] = true; 
         if(e.key.toLowerCase() === 'm') onMenu();
-        if(e.key === 'Enter') {
+        
+        // Broadened safety check for simulated keyboards
+        if(e.key === 'Enter' || e.key.toLowerCase() === 'enter' || e.key === 'Return') {
             if (engine.state.status === 'start' || engine.state.status === 'gameover') {
                 engine.reset();
                 engine.state.status = 'playing';
@@ -66,7 +67,38 @@ export default function RobotronGame({ audioCtx, onMenu }) {
 
     const loop = () => {
         if (!engine) return;
-        const state = engine.update(keys);
+
+        // --- NATIVE USB GAMEPAD POLLER ---
+        // We create a copy of the keys object so we can inject controller inputs 
+        // without permanently overriding the physical keyboard state.
+        const virtualKeys = { ...keys };
+        const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+        const gp = gamepads.find(g => g !== null && g.connected);
+
+        if (gp) {
+            // NES Start Button (Usually mapped to button 9 or 7 on USB controllers)
+            if (gp.buttons[9]?.pressed || gp.buttons[7]?.pressed) {
+                if (engine.state.status === 'start' || engine.state.status === 'gameover') {
+                    engine.reset();
+                    engine.state.status = 'playing';
+                    engine.startWave();
+                }
+            }
+
+            // NES A/B Action Buttons -> Map to Spacebar (Fire)
+            if (gp.buttons[0]?.pressed || gp.buttons[1]?.pressed || gp.buttons[2]?.pressed) {
+                virtualKeys[' '] = true;
+            }
+
+            // NES D-Pad / Analog Axes -> Map to WASD (Move)
+            if (gp.axes[0] < -0.5 || gp.buttons[14]?.pressed) virtualKeys['a'] = true; // Left
+            if (gp.axes[0] > 0.5 || gp.buttons[15]?.pressed) virtualKeys['d'] = true; // Right
+            if (gp.axes[1] < -0.5 || gp.buttons[12]?.pressed) virtualKeys['w'] = true; // Up
+            if (gp.axes[1] > 0.5 || gp.buttons[13]?.pressed) virtualKeys['s'] = true; // Down
+        }
+
+        // Pass the merged Keyboard & USB Controller inputs into the engine
+        const state = engine.update(virtualKeys);
         
         ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; 
         ctx.fillRect(0, 0, engine.WIDTH, engine.HEIGHT);
@@ -81,11 +113,13 @@ export default function RobotronGame({ audioCtx, onMenu }) {
             ctx.fillStyle = '#ff0000'; ctx.font = '60px "VT323"'; ctx.textAlign = 'center';
             ctx.fillText("ROBOTRON: 2084", engine.WIDTH/2, engine.HEIGHT/2 - 40);
             ctx.fillStyle = '#0f0'; ctx.font = '24px "VT323"';
-            ctx.fillText("WASD/ARROWS: MOVE  |  SPACE: FIRE", engine.WIDTH/2, engine.HEIGHT/2 + 20);
-            ctx.fillStyle = (Math.floor(Date.now() / 200) % 2 === 0) ? '#fff' : '#ff0'; 
-            ctx.fillText("PRESS ENTER TO START", engine.WIDTH/2, engine.HEIGHT/2 + 70);
-        } else {
             
+            // Updated to reflect USB Controller capabilities
+            ctx.fillText("D-PAD: MOVE  |  A/B/SPACE: FIRE", engine.WIDTH/2, engine.HEIGHT/2 + 20);
+            
+            ctx.fillStyle = (Math.floor(Date.now() / 200) % 2 === 0) ? '#fff' : '#ff0'; 
+            ctx.fillText("PRESS START", engine.WIDTH/2, engine.HEIGHT/2 + 70);
+        } else {
             state.electrodes.forEach(el => sprites.draw(ctx, 'electrode', el.x, el.y, state.tick));
             state.humans.forEach(h => sprites.draw(ctx, 'human', h.x, h.y, state.tick));
             
@@ -138,7 +172,7 @@ export default function RobotronGame({ audioCtx, onMenu }) {
                 ctx.fillStyle = '#f00'; ctx.font = '60px "VT323"'; ctx.textAlign = 'center';
                 ctx.fillText("GAME OVER", engine.WIDTH/2, engine.HEIGHT/2);
                 ctx.fillStyle = '#fff'; ctx.font = '24px "VT323"';
-                ctx.fillText("PRESS ENTER TO RESTART", engine.WIDTH/2, engine.HEIGHT/2 + 50);
+                ctx.fillText("PRESS START TO RESTART", engine.WIDTH/2, engine.HEIGHT/2 + 50);
             }
         }
 
