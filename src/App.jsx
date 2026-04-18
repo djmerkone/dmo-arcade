@@ -639,7 +639,6 @@ const games = ['1942', 'batzon', 'galaga', 'commando', 'snake', 'asteroids', 'de
       }
       
       const opts = [
-          { text: "1942 (BETA TEST)", game: '1942' }, // <--- ADDED!
           { text: "BATTLE TANK ZONE", game: 'batzon' },
           { text: "GALAXY FIGHTER", game: 'galaga' },
           { text: "STATION COMMANDO", game: 'commando' },
