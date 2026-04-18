@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import BattlezoneGame from './batzon';
-import Game1942 from './1942';
+import Game1942 from './1942/index';
 
 // --- ASSET LOADER --- 
 const ASSETS = {
@@ -564,27 +564,27 @@ useEffect(() => {
         ctx.moveTo(px, py - 40); ctx.lineTo(px - 30, py + 20); ctx.lineTo(px + 30, py + 20); ctx.closePath();
         ctx.moveTo(px, py - 40); ctx.lineTo(px + 10, py + 10); ctx.lineTo(px - 30, py + 20);
         ctx.stroke();
-      } else if (sel === 1) { // GALAXY FIGHTER
+      } else if (sel === 2) { // GALAXY FIGHTER
         ctx.fillStyle = '#fff';
         gs.stars.forEach(s => {
            s.y += s.speed; if(s.y > 600) s.y = -10;
            ctx.fillRect(s.x, s.y, s.size, s.size + s.speed);
         });
-      } else if (sel === 2) { // STATION COMMANDO
+      } else if (sel === 3) { // STATION COMMANDO
         ctx.strokeStyle = '#f0f'; ctx.lineWidth = 2;
         gs.missiles.forEach(m => {
            m.y += m.speed;
            ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x, m.y - 20); ctx.stroke();
            if(m.y > 600) { m.y = -50; m.x = Math.random()*800; }
         });
-      } else if (sel === 3) { // CLASSIC SNAKEZ
+      } else if (sel === 4) { // CLASSIC SNAKEZ
         ctx.fillStyle = '#0f0';
         let sx = 400 + Math.sin(gs.tick * 0.05) * 150;
         let sy = 300 + Math.cos(gs.tick * 0.05) * 150;
         ctx.fillRect(sx, sy, 30, 30);
         ctx.fillRect(sx - 35, sy, 30, 30);
         ctx.fillRect(sx - 70, sy, 30, 30);
-      } else if (sel === 4) { // SPACE ASTEROIDZ
+      } else if (sel === 5) { // SPACE ASTEROIDZ
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
         gs.asteroids.forEach(a => {
           a.x += a.vx; a.y += a.vy; a.rot += a.rotSpeed;
@@ -598,7 +598,7 @@ useEffect(() => {
           });
           ctx.closePath(); ctx.stroke(); ctx.restore();
         });
-      } else if (sel === 5) { // SPACE DEFENDAZ
+      } else if (sel === 6) { // SPACE DEFENDAZ
         ctx.strokeStyle = '#a52'; ctx.lineWidth = 4;
         ctx.beginPath();
         let dx = (gs.tick * 4) % 100;
@@ -607,27 +607,27 @@ useEffect(() => {
            if(i===-1) ctx.moveTo(rx, ry); else ctx.lineTo(rx, ry);
         }
         ctx.stroke();
-      } else if (sel === 6) { // COUNTRY TRAIL
+      } else if (sel === 7) { // COUNTRY TRAIL
         ctx.fillStyle = '#852'; ctx.fillRect(0, 450, 800, 150);
         let wx = (gs.tick * 1.5) % 1000 - 150;
         drawWagon(wx, 440);
-      } else if (sel === 7) { // SPACE INVADAZ
+      } else if (sel === 8) { // SPACE INVADAZ
         ctx.fillStyle = '#0ff';
         let ix = 350 + Math.sin(gs.tick * 0.03) * 250;
         let iy = 250 + Math.sin(gs.tick * 0.15) * 30; 
         ctx.fillRect(ix, iy, 60, 40); ctx.fillRect(ix+10, iy-20, 40, 20);
-      } else if (sel === 8) { // FLY FIGHT 1941
+      } else if (sel === 9) { // FLY FIGHT 1941
         ctx.fillStyle = '#001a44'; ctx.fillRect(0,0,800,600);
         ctx.fillStyle = '#004400';
         let dy = (gs.tick * 2) % 900 - 150;
         ctx.beginPath(); ctx.arc(200, dy, 120, 0, Math.PI*2); ctx.fill();
         ctx.beginPath(); ctx.arc(600, dy - 300, 100, 0, Math.PI*2); ctx.fill();
-      } else if (sel === 9) { // BADASSATRON 2084
+      } else if (sel === 10) { // BADASSATRON 2084
         ctx.strokeStyle = `hsl(${(gs.tick * 5) % 360}, 100%, 50%)`;
         ctx.lineWidth = 6;
         let sz = (gs.tick * 6) % 800;
         ctx.strokeRect(400 - sz/2, 300 - sz/2, sz, sz);
-      } else if (sel === 10) { // CONTROLLER SETUP
+      } else if (sel === 11) { // CONTROLLER SETUP
         gs.controllers.forEach(c => {
            c.x += c.vx; c.rot += c.rs;
            if(c.x > 900) c.x = -100;
@@ -636,7 +636,7 @@ useEffect(() => {
       }
 
       ctx.globalAlpha = 1.0; // Reset alpha for text
-
+      
 // --- FOREGROUND MENU UI ---
       // Drop the header in from the top
       let headerY = Math.min(100, -50 + gs.tick * 4);
