@@ -645,7 +645,7 @@ useEffect(() => {
       }
       
       const opts = [
-          { text: "1942 (ARCADE)", game: '1942' }, // <--- ADDED!
+          { text: "1942 (BETA TEST)", game: '1942' }, // <--- ADDED!
           { text: "BATTLE TANK ZONE", game: 'batzon' },
           { text: "GALAXY FIGHTER", game: 'galaga' },
           { text: "STATION COMMANDO", game: 'commando' },
@@ -5529,7 +5529,6 @@ const handleStart = async () => {
   const handleGameSelect = (game) => {
     setGameState(game);
     if (game === 'galaga') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'galagaStart' }));
-    else if (game === '1942') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
     else if (game === 'batzon') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
     else if (game === 'commando') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'commandoStart' }));
     else if (game === 'snake') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'snakeStart' }));
