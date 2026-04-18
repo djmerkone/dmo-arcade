@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import NewRobotronGame from './robotron/index';
 import BattlezoneGame from './batzon';
 import Game1942 from './1942/index';
 
@@ -487,7 +488,7 @@ useEffect(() => {
           playAudio('select');
           
           // ADD '1942' TO THE FRONT OF THIS LIST!
-          const games = ['1942', 'batzon', 'galaga', 'commando', 'snake', 'asteroids', 'defender', 'oregon', 'invaders', '1941', 'robotron', 'controller'];
+const games = ['1942', 'batzon', 'galaga', 'commando', 'snake', 'asteroids', 'defender', 'oregon', 'invaders', '1941', 'robotron', 'controller'];
           setTimeout(() => onSelect(games[selectedIndex.current]), 200);
       }
     };
@@ -5670,7 +5671,8 @@ const handleStart = async () => {
             {gameState === 'defender' && <DefenderGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'oregon' && <OregonTrailGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'invaders' && <InvadersGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
-            {gameState === 'robotron' && <RobotronGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
+            {gameState === 'robotron' && <NewRobotronGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
+            {gameState === 'robotron_fallback' && <RobotronGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === '1941' && <AirplaneGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'controller' && <ControllerSetup onMenu={handleReturnToMenu} />}
 
