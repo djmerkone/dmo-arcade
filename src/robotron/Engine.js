@@ -144,7 +144,7 @@ export class RobotronEngine {
         // OVERWHELMING SENSORY DEATH
         this.spawnShockwave(this.state.player.x, this.state.player.y, '#ffffff', 5, 20);
         this.spawnParticles(this.state.player.x, this.state.player.y, 80, '#ffffff', 15);
-        this.playSound('boom', false);
+        this.playSound('boom', e.type);
         this.state.flash = 10; // Flash the screen bright red!
         
         this.state.lives--;

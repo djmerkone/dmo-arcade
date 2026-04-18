@@ -1,35 +1,58 @@
 // src/robotron/index.jsx
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { WilliamsAudio } from './Audio';
 import { RobotronSprites } from './Sprites';
 import { RobotronEngine } from './Engine';
 
 export default function RobotronGame({ audioCtx, onMenu }) {
   const canvasRef = useRef(null);
+  
+  // ADDED: Loading state to prevent the game from starting before assets arrive
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
+    if (!canvas) return;
     const ctx = canvas.getContext('2d', { alpha: false });
-    
-    // Disable smoothing for perfect 8-bit pixels
     ctx.imageSmoothingEnabled = false;
 
-    // Initialize Systems
     const audio = new WilliamsAudio(audioCtx);
     const sprites = new RobotronSprites();
-    sprites.initialize();
     
-    const engine = new RobotronEngine((type, isHulk) => {
-        if (type === 'shoot') audio.playShoot();
-        if (type === 'boom') audio.playExplosion(isHulk);
-        if (type === 'rescue') audio.playHumanRescue();
-        if (type === 'spawn') audio.playSpawnMaterialize();
+    let engine;
+    let animationFrameId;
+
+    // --- ASYNC BOOT LOADER ---
+    const bootGame = async () => {
+        try {
+            await Promise.all([
+                sprites.loadAssets(),
+                audio.loadAssets()
+            ]);
+            
+const engine = new RobotronEngine((actionType, enemyType) => {
+        if (actionType === 'shoot') audio.playShoot();
+        if (actionType === 'boom') audio.playExplosion(enemyType); // Passes 'grunt', 'brain', 'hulk', etc.
+        if (actionType === 'rescue') audio.playHumanRescue();
+        if (actionType === 'humanKilled') audio.playHumanKilled();
+        if (actionType === 'playerDeath') audio.playPlayerDeath();
+        if (actionType === 'spawn') audio.playSpawnMaterialize();
     });
+
+            setIsReady(true);
+            loop(); // Start the loop ONLY after loading is done
+        } catch (err) {
+            console.error("Failed to boot Robotron ROMs", err);
+        }
+    };
+    
+    bootGame();
 
     // Input Handling
     const keys = {};
     const handleKeyDown = e => { 
-        if (e.key === ' ') e.preventDefault(); // Stops the page from scrolling when you shoot!
+        if (!isReady || !engine) return;
+        if (e.key === ' ') e.preventDefault(); 
         keys[e.key.toLowerCase()] = true; 
         if(e.key.toLowerCase() === 'm') onMenu();
         if(e.key === 'Enter') {
@@ -45,18 +68,13 @@ export default function RobotronGame({ audioCtx, onMenu }) {
     window.addEventListener('keyup', handleKeyUp);
 
     // The Master Loop
-    let animationFrameId;
     const loop = () => {
+        if (!engine) return;
         const state = engine.update(keys);
         
-        // --- SENSORY OVERLOAD RENDER PIPELINE ---
-        
-        // 1. Phosphor Smear Effect (DO NOT USE clearRect!)
-        // By drawing a semi-transparent black box over the old frame, moving bright objects leave a glowing trail.
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)'; 
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; 
         ctx.fillRect(0, 0, engine.WIDTH, engine.HEIGHT);
 
-        // 2. Global Screen Flash (Death / Wave Start)
         if (state.flash > 0) {
             ctx.fillStyle = `rgba(255, 0, 0, ${state.flash / 10})`;
             ctx.fillRect(0, 0, engine.WIDTH, engine.HEIGHT);
@@ -68,55 +86,48 @@ export default function RobotronGame({ audioCtx, onMenu }) {
             ctx.fillText("ROBOTRON: 2084", engine.WIDTH/2, engine.HEIGHT/2 - 40);
             ctx.fillStyle = '#0f0'; ctx.font = '24px "VT323"';
             ctx.fillText("WASD/ARROWS: MOVE  |  SPACE: FIRE", engine.WIDTH/2, engine.HEIGHT/2 + 20);
-            ctx.fillStyle = (Math.floor(Date.now() / 200) % 2 === 0) ? '#fff' : '#ff0'; // Blinking text
+            ctx.fillStyle = (Math.floor(Date.now() / 200) % 2 === 0) ? '#fff' : '#ff0'; 
             ctx.fillText("PRESS ENTER TO START", engine.WIDTH/2, engine.HEIGHT/2 + 70);
         } else {
-            // Draw Electrodes
-            state.electrodes.forEach(el => { ctx.drawImage(sprites.get('electrode'), el.x - 9, el.y - 9); });
-
-            // Draw Humans
-            state.humans.forEach(h => { ctx.drawImage(sprites.get('human'), h.x - 9, h.y - 9); });
-
-            // Draw Enemies (With chaotic flashing for Brains and Progs)
+            
+            // USING THE NEW SPRITESHEET RENDERER
+            state.electrodes.forEach(el => sprites.draw(ctx, 'electrode', el.x, el.y, state.tick));
+            state.humans.forEach(h => sprites.draw(ctx, 'human', h.x, h.y, state.tick));
+            
             state.enemies.forEach(e => {
-                let spriteName = e.type;
-                // Brains and Progs should flash violently
                 if ((e.type === 'brain' || e.type === 'prog') && Math.floor(state.tick / 3) % 2 === 0) {
-                    ctx.globalAlpha = 0.5; // Flicker effect
+                    ctx.globalAlpha = 0.5; 
                 }
-                ctx.drawImage(sprites.get(spriteName, state.tick), e.x - 9, e.y - 9);
+                sprites.draw(ctx, e.type, e.x, e.y, state.tick);
                 ctx.globalAlpha = 1.0;
             });
 
-            // Draw Bullets (Thick, bright neon tracers)
+            // Draw Bullets using the sprite sheet or keep them as neon tracers
             ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 4;
             ctx.lineCap = 'round';
             ctx.beginPath();
             state.bullets.forEach(b => {
                 ctx.moveTo(b.x, b.y); 
-                ctx.lineTo(b.x - b.vx * 1.2, b.y - b.vy * 1.2); // Trail matches velocity
+                ctx.lineTo(b.x - b.vx * 1.2, b.y - b.vy * 1.2); 
             });
             ctx.stroke();
 
-            // Draw Player (Flashes when invulnerable)
+            // Draw Player
             if (state.status === 'playing') {
                 if (state.player.invuln <= 0 || Math.floor(state.tick / 3) % 2 === 0) {
-                    ctx.drawImage(sprites.get('player'), state.player.x - 9, state.player.y - 9);
+                    sprites.draw(ctx, 'player', state.player.x, state.player.y, state.tick);
                 }
             }
 
-            // --- SPECTACULAR PARTICLE SYSTEM ---
+            // Spectactular Particle System
             state.particles.forEach(p => {
                 ctx.globalAlpha = Math.max(0, p.life / (p.maxLife || 50));
-                
                 if (p.type === 'shockwave') {
-                    // Williams-style expanding hollow square
                     ctx.strokeStyle = p.color;
                     ctx.lineWidth = 3;
                     let size = (p.maxLife - p.life) * p.speed;
                     ctx.strokeRect(p.x - size/2, p.y - size/2, size, size);
                 } else {
-                    // Standard chunky shrapnel
                     ctx.fillStyle = p.color;
                     ctx.fillRect(p.x, p.y, 4, 4); 
                 }
@@ -142,7 +153,6 @@ export default function RobotronGame({ audioCtx, onMenu }) {
 
         animationFrameId = requestAnimationFrame(loop);
     };
-    loop();
 
     return () => {
         cancelAnimationFrame(animationFrameId);
@@ -153,7 +163,12 @@ export default function RobotronGame({ audioCtx, onMenu }) {
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-auto bg-black p-4">
-      {/* 640x480 is exactly 4:3! */}
+      {/* Show a loading screen while files are fetched */}
+      {!isReady && (
+         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black bg-opacity-90">
+             <h2 className="text-[#0f0] text-3xl font-['VT323'] blink-text">LOADING ROM ASSETS...</h2>
+         </div>
+      )}
       <canvas ref={canvasRef} width={640} height={480} className="w-full max-w-[800px] aspect-[4/3] object-contain border-4 border-[#333] shadow-[0_0_30px_#f00]" />
     </div>
   );
