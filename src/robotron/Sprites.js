@@ -3,7 +3,7 @@
 export class RobotronSprites {
     constructor() {
         this.cache = {};
-        this.scale = 3; 
+        this.scale = 4.5; 
     }
 
     initialize() {

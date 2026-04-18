@@ -6,6 +6,7 @@ import { RobotronEngine } from './Engine';
 
 export default function RobotronGame({ audioCtx, onMenu }) {
   const canvasRef = useRef(null);
+  const containerRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
@@ -27,6 +28,19 @@ export default function RobotronGame({ audioCtx, onMenu }) {
             if (actionType === 'spawn') audio.playSpawnMaterialize();
             if (actionType === 'playerDeath') audio.playPlayerDeath();
         });
+        
+        // --- FULLSCREEN RESIZE BINDING ---
+        const handleResize = () => {
+            if (!containerRef.current || !engine) return;
+            const rect = containerRef.current.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            engine.WIDTH = rect.width;
+            engine.HEIGHT = rect.height;
+        };
+        window.addEventListener('resize', handleResize);
+        handleResize(); // Trigger immediately to set initial full screen
+
         setIsReady(true);
         loop(); 
     };
@@ -74,42 +88,58 @@ export default function RobotronGame({ audioCtx, onMenu }) {
 
         const state = engine.update(virtualKeys);
         
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; 
+        // PHOSPHOR TRAIL RENDERER
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)'; 
         ctx.fillRect(0, 0, engine.WIDTH, engine.HEIGHT);
 
+        // GLOBAL SCREEN FLASH
         if (state.flash > 0) {
-            ctx.fillStyle = `rgba(255, 0, 0, ${state.flash / 10})`;
+            ctx.fillStyle = `rgba(255, 0, 0, ${state.flash / 15})`;
             ctx.fillRect(0, 0, engine.WIDTH, engine.HEIGHT);
             state.flash--;
         }
 
         if (state.status === 'start') {
-            ctx.fillStyle = '#ff0000'; ctx.font = '60px "VT323"'; ctx.textAlign = 'center';
-            ctx.fillText("ROBOTRON: 2084", engine.WIDTH/2, engine.HEIGHT/2 - 40);
-            ctx.fillStyle = '#0f0'; ctx.font = '24px "VT323"';
+            ctx.fillStyle = '#ff0000'; ctx.font = '80px "VT323"'; ctx.textAlign = 'center';
+            ctx.fillText("ROBOTRON: 2084", engine.WIDTH/2, engine.HEIGHT/2 - 60);
+            ctx.fillStyle = '#0f0'; ctx.font = '30px "VT323"';
             ctx.fillText("D-PAD: MOVE  |  A/B/SPACE: FIRE", engine.WIDTH/2, engine.HEIGHT/2 + 20);
             ctx.fillStyle = (Math.floor(Date.now() / 200) % 2 === 0) ? '#fff' : '#ff0'; 
-            ctx.fillText("PRESS START", engine.WIDTH/2, engine.HEIGHT/2 + 70);
+            ctx.fillText("PRESS START", engine.WIDTH/2, engine.HEIGHT/2 + 90);
         } else {
             
-            // --- SPAWN ANIMATION ---
-            if (state.spawnTimer > 0) {
-                // Draw collapsing materialization boxes!
-                let boxSize = (state.spawnTimer / 60) * 100; // Shrinks from 100px to 0
-                ctx.lineWidth = 2;
+            // --- WAVE TRANSITION ANIMATION ---
+            if (state.transitionTimer > 0) {
+                // Hyper flashing text
+                ctx.fillStyle = (Math.floor(state.transitionTimer / 4) % 2 === 0) ? '#0ff' : '#f0f'; 
+                ctx.font = '80px "VT323"'; ctx.textAlign = 'center';
+                ctx.fillText(`WAVE ${state.wave} COMPLETED`, engine.WIDTH/2, engine.HEIGHT/2);
+            }
+            
+            // --- MATERIALIZATION ANIMATION ---
+            else if (state.spawnTimer > 0) {
+                let progress = 1 - (state.spawnTimer / 90); // 0.0 to 1.0
+                let boxSize = (1 - progress) * 400; // Collapses from massive 400px down to 0
+                
+                ctx.lineWidth = 4;
                 state.enemies.forEach(e => {
                     ctx.strokeStyle = e.type === 'hulk' ? '#0f0' : (e.type === 'brain' ? '#f0f' : '#f00');
+                    // Draw multiple expanding/collapsing geometric boxes!
                     ctx.strokeRect(e.x - boxSize/2, e.y - boxSize/2, boxSize, boxSize);
+                    ctx.strokeRect(e.x - boxSize, e.y - boxSize, boxSize*2, boxSize*2);
                 });
+                
                 sprites.draw(ctx, 'player', state.player.x, state.player.y, state.tick);
-            } else {
-                // NORMAL GAMEPLAY RENDER
+            } 
+            
+            // --- STANDARD RENDER ---
+            else {
                 state.electrodes.forEach(el => sprites.draw(ctx, 'electrode', el.x, el.y, state.tick));
                 state.humans.forEach(h => sprites.draw(ctx, 'human', h.x, h.y, state.tick));
-                
                 state.enemies.forEach(e => sprites.draw(ctx, e.type, e.x, e.y, state.tick));
 
-                ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+                // Laser Tracers
+                ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 6; ctx.lineCap = 'round';
                 ctx.beginPath();
                 state.bullets.forEach(b => {
                     ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - b.vx * 1.5, b.y - b.vy * 1.5); 
@@ -121,43 +151,39 @@ export default function RobotronGame({ audioCtx, onMenu }) {
                 }
             }
 
-            // --- ADVANCED DEATH ANIMATIONS ---
+            // --- THE SPREADING SLICE PARTICLES ---
             state.particles.forEach(p => {
-                let progress = 1 - (p.life / p.maxLife); // 0.0 to 1.0
-                ctx.strokeStyle = p.color;
-                
-                if (p.type === 'player_death') {
-                    // Massive radiating plus signs
-                    let size = progress * 150; 
-                    ctx.lineWidth = 4;
+                ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+                if (p.type === 'slice') {
+                    ctx.strokeStyle = p.color;
+                    ctx.lineWidth = 5; // Thick arcade lines
                     ctx.beginPath();
-                    ctx.moveTo(p.x - size, p.y); ctx.lineTo(p.x + size, p.y);
-                    ctx.moveTo(p.x, p.y - size); ctx.lineTo(p.x, p.y + size);
+                    let endX = p.x + Math.cos(p.angle) * p.length;
+                    let endY = p.y + Math.sin(p.angle) * p.length;
+                    ctx.moveTo(p.x, p.y);
+                    ctx.lineTo(endX, endY);
                     ctx.stroke();
-                } else if (p.type === 'enemy_death') {
-                    // Expanding hollow square
-                    let size = progress * 40;
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(p.x - size/2, p.y - size/2, size, size);
                 } else {
                     ctx.fillStyle = p.color;
-                    ctx.fillRect(p.x, p.y, 4, 4); 
+                    ctx.fillRect(p.x, p.y, 6, 6); // Chunky shrapnel
                 }
             });
+            ctx.globalAlpha = 1.0;
 
-            ctx.fillStyle = '#ff0000'; ctx.font = '22px "VT323"'; ctx.textAlign = 'left';
-            ctx.fillText(`SCORE: ${state.score}`, 10, 25);
+            // --- HUD ---
+            ctx.fillStyle = '#ff0000'; ctx.font = '30px "VT323"'; ctx.textAlign = 'left';
+            ctx.fillText(`SCORE: ${state.score}`, 20, 35);
             ctx.textAlign = 'center'; ctx.fillStyle = '#00ffff';
-            ctx.fillText(`WAVE ${state.wave}`, engine.WIDTH/2, 25);
+            ctx.fillText(`WAVE ${state.wave}`, engine.WIDTH/2, 35);
             ctx.textAlign = 'right'; ctx.fillStyle = '#0f0';
-            ctx.fillText(`LIVES: ${state.lives}`, engine.WIDTH - 10, 25);
+            ctx.fillText(`LIVES: ${state.lives}`, engine.WIDTH - 20, 35);
 
             if (state.status === 'gameover') {
-                ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0,0,engine.WIDTH,engine.HEIGHT);
-                ctx.fillStyle = '#f00'; ctx.font = '60px "VT323"'; ctx.textAlign = 'center';
+                ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0,0,engine.WIDTH,engine.HEIGHT);
+                ctx.fillStyle = '#f00'; ctx.font = '80px "VT323"'; ctx.textAlign = 'center';
                 ctx.fillText("GAME OVER", engine.WIDTH/2, engine.HEIGHT/2);
-                ctx.fillStyle = '#fff'; ctx.font = '24px "VT323"';
-                ctx.fillText("PRESS START TO RESTART", engine.WIDTH/2, engine.HEIGHT/2 + 50);
+                ctx.fillStyle = '#fff'; ctx.font = '30px "VT323"';
+                ctx.fillText("PRESS START TO RESTART", engine.WIDTH/2, engine.HEIGHT/2 + 60);
             }
         }
 
@@ -165,6 +191,7 @@ export default function RobotronGame({ audioCtx, onMenu }) {
     };
 
     return () => {
+        window.removeEventListener('resize', () => {}); // cleanup handled implicitly by unmount
         cancelAnimationFrame(animationFrameId);
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('keyup', handleKeyUp);
@@ -172,8 +199,14 @@ export default function RobotronGame({ audioCtx, onMenu }) {
   }, [audioCtx, onMenu]);
 
   return (
-    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-auto bg-black p-4">
-      <canvas ref={canvasRef} width={640} height={480} className="w-full max-w-[800px] aspect-[4/3] object-contain border-4 border-[#333] shadow-[0_0_30px_#f00]" />
+    // We removed all CSS constraints! It will stretch to fit the absolute container.
+    <div ref={containerRef} className="absolute inset-0 z-20 bg-black pointer-events-auto overflow-hidden">
+      {!isReady && (
+         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black bg-opacity-90">
+             <h2 className="text-[#0f0] text-3xl font-['VT323'] blink-text">LOADING ROM ASSETS...</h2>
+         </div>
+      )}
+      <canvas ref={canvasRef} className="block w-full h-full cursor-none" />
     </div>
   );
 }
