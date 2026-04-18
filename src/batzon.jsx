@@ -179,23 +179,28 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
     const triggerExplosion = (ex, ey, ez, color) => {
         playAudio('boom');
         
-        // 1. Vector Debris (Large spinning chunks)
-        for(let i=0; i<12; i++) {
+        // 1. Expanding 3D Shockwave
+        state.current.particles.push({
+            type: 'shockwave', x: ex, y: ey, z: ez, radius: 1, maxRadius: 250, color: '#fff'
+        });
+
+        // 2. Vector Debris Shards (Spinning chunks)
+        for(let i=0; i<15; i++) {
             state.current.particles.push({
-                x: ex, y: ey + 20, z: ez,
-                vx: (Math.random()-0.5)*25, vy: 10 + (Math.random()*20), vz: (Math.random()-0.5)*25,
+                type: 'shard', x: ex, y: ey + 20, z: ez,
+                vx: (Math.random()-0.5)*35, vy: 10 + (Math.random()*25), vz: (Math.random()-0.5)*35,
                 rx: Math.random()*Math.PI*2, ry: Math.random()*Math.PI*2, rz: Math.random()*Math.PI*2,
-                rvx: (Math.random()-0.5)*0.5, rvy: (Math.random()-0.5)*0.5, rvz: (Math.random()-0.5)*0.5,
-                len: 20 + Math.random()*50, life: 60 + Math.random()*40, color: color
+                rvx: (Math.random()-0.5)*0.6, rvy: (Math.random()-0.5)*0.6, rvz: (Math.random()-0.5)*0.6,
+                len: 20 + Math.random()*60, life: 60 + Math.random()*40, color: color
             });
         }
 
-        // 2. Glittering Spark Dust (Hundreds of tiny bright dots)
+        // 3. Dense Glittering Spark Dust
         const colors = ['#ffffff', '#ffaa00', '#ff0000', color];
-        for(let i=0; i<80; i++) {
+        for(let i=0; i<100; i++) {
             state.current.dust.push({
                 x: ex, y: ey + 20, z: ez,
-                vx: (Math.random()-0.5)*35, vy: 5 + (Math.random()*30), vz: (Math.random()-0.5)*35,
+                vx: (Math.random()-0.5)*50, vy: 5 + (Math.random()*40), vz: (Math.random()-0.5)*50,
                 life: 80 + Math.random()*60,
                 color: colors[Math.floor(Math.random() * colors.length)]
             });
@@ -227,6 +232,7 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
     const projectToScreen = (camPt) => {
       if (camPt.z < 10) return null;
       let scale = FOV / camPt.z;
+      // Horizon locked exactly to y: 20 relative offset
       return { x: (NATIVE_W / 2) + (camPt.x * scale), y: (NATIVE_H / 2) - (camPt.y * scale) + 20 };
     };
 
@@ -265,26 +271,23 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
       p.vx += Math.sin(p.bodyAngle) * thrust;
       p.vz += Math.cos(p.bodyAngle) * thrust;
       
-      // Heavy friction
       p.vx *= 0.90; p.vz *= 0.90; 
 
       let nextX = p.x + p.vx;
       let nextZ = p.z + p.vz;
 
-      // Environmental Collision
       let hitObs = false;
       gs.obstacles.forEach(obs => {
          if (Math.hypot(obs.x - nextX, obs.z - nextZ) < 80) hitObs = true;
       });
       
       if (!hitObs) { p.x = nextX; p.z = nextZ; } 
-      else { p.vx *= -0.5; p.vz *= -0.5; p.shake = 10; } // Bounce and thud
+      else { p.vx *= -0.5; p.vz *= -0.5; p.shake = 10; } 
 
-      // Boundaries
       if (Math.abs(p.x) > WORLD_SIZE) p.x = Math.sign(p.x) * WORLD_SIZE;
       if (Math.abs(p.z) > WORLD_SIZE) p.z = Math.sign(p.z) * WORLD_SIZE;
 
-      // Mouse Shooting
+      // Mouse Shooting - Perfectly aligned to crosshair horizon
       if (p.cooldown > 0) p.cooldown--;
       if (keys['mouse0'] && p.cooldown <= 0 && document.pointerLockElement) {
          gs.projectiles.push({
@@ -344,13 +347,13 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
                     angle: Math.random() * Math.PI * 2, state: 'hunt', timer: Math.random()*100
                 });
             }
-            gs.waveTimer = 180; // Reset for next clear
+            gs.waveTimer = 180; 
          }
       }
 
-      // Enemy AI
-      let enemySpeed = Math.min(12, 4 + (gs.wave * 0.5));
-      let enemyAggro = Math.max(30, 100 - (gs.wave * 5));
+      // Progressive Enemy Difficulty
+      let enemySpeed = Math.min(10, 3 + (gs.wave * 0.4));
+      let enemyAggro = Math.max(60, 240 - (gs.wave * 20)); // Starts slow (220 frames), gets faster each wave
 
       gs.enemies.forEach(e => {
          let dx = p.x - e.x; let dz = p.z - e.z;
@@ -363,12 +366,12 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
             while (diff < -Math.PI) diff += Math.PI * 2;
             e.angle += Math.max(-0.04, Math.min(0.04, diff));
 
-            // Evasive maneuvers if too close
             if (dist > 800) { e.x += Math.sin(e.angle) * enemySpeed; e.z += Math.cos(e.angle) * enemySpeed; }
             else if (dist < 400) { e.x -= Math.sin(e.angle) * enemySpeed; e.z -= Math.cos(e.angle) * enemySpeed; }
 
             e.timer++;
-            if (e.timer > enemyAggro && Math.abs(diff) < 0.3 && dist < 4000) {
+            // Enemies won't fire until their timer exceeds the progressive aggro threshold
+            if (e.timer > enemyAggro && Math.abs(diff) < 0.15 && dist < 4000) {
                gs.projectiles.push({
                   x: e.x + Math.sin(e.angle)*40, z: e.z + Math.cos(e.angle)*40, y: 15,
                   vx: Math.sin(e.angle) * 25, vz: Math.cos(e.angle) * 25,
@@ -382,23 +385,39 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
          }
       });
 
-      // Update Vector Particles
+      // Update Explosive Particles (Shards & Shockwaves)
       for (let i = gs.particles.length - 1; i >= 0; i--) {
          let pt = gs.particles[i];
-         pt.x += pt.vx; pt.y += pt.vy; pt.z += pt.vz;
-         pt.rx += pt.rvx; pt.ry += pt.rvy; pt.rz += pt.rvz;
-         pt.vy -= 0.5; // Gravity
-         pt.vx *= 0.98; pt.vz *= 0.98; // Drag
-         if (pt.y < 0) { pt.y = 0; pt.vy *= -0.5; pt.vx *= 0.8; pt.vz *= 0.8; } // Bounce
-         pt.life--; if (pt.life <= 0) gs.particles.splice(i, 1);
+         
+         if (pt.type === 'shockwave') {
+             pt.radius += 15;
+             if (pt.radius > pt.maxRadius) gs.particles.splice(i, 1);
+         } else {
+             pt.x += pt.vx; pt.y += pt.vy; pt.z += pt.vz;
+             pt.rx += pt.rvx; pt.ry += pt.rvy; pt.rz += pt.rvz;
+             pt.vy -= 0.6; // Gravity
+             pt.vx *= 0.98; pt.vz *= 0.98; 
+             if (pt.y < 0) { pt.y = 0; pt.vy *= -0.5; pt.vx *= 0.8; pt.vz *= 0.8; } 
+             
+             // Shards leave a trail of trailing sparks
+             if (Math.random() < 0.3) {
+                 gs.dust.push({
+                    x: pt.x, y: pt.y, z: pt.z,
+                    vx: (Math.random()-0.5)*2, vy: (Math.random()-0.5)*2, vz: (Math.random()-0.5)*2,
+                    life: 20 + Math.random()*20, color: pt.color
+                 });
+             }
+
+             pt.life--; if (pt.life <= 0) gs.particles.splice(i, 1);
+         }
       }
 
       // Update Glitter Dust
       for (let i = gs.dust.length - 1; i >= 0; i--) {
          let d = gs.dust[i];
          d.x += d.vx; d.y += d.vy; d.z += d.vz;
-         d.vy -= 0.8; // Gravity
-         d.vx *= 0.92; d.vz *= 0.92; // High drag
+         d.vy -= 0.8; 
+         d.vx *= 0.92; d.vz *= 0.92; 
          if (d.y < 0) { d.y = 0; d.vy *= -0.3; d.vx *= 0.5; d.vz *= 0.5; }
          d.life--; if (d.life <= 0) gs.dust.splice(i, 1);
       }
@@ -415,7 +434,7 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
       let shake = (Math.random() - 0.5) * p.shake;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, NATIVE_W, NATIVE_H); // Pitch Black Void
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, NATIVE_W, NATIVE_H); 
 
       ctx.lineWidth = 2; ctx.lineJoin = 'round';
 
@@ -465,7 +484,6 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
 
       // --- DRAW INFINITE FLOOR GRID ---
       ctx.beginPath();
-      // Only draw grid lines in front of us
       for(let x = -8; x <= 8; x++) {
           let gridX = Math.floor(p.x / GRID_SIZE) * GRID_SIZE + (x * GRID_SIZE);
           let pNear = transformPoint(gridX, 0, p.z, 0, 0, 0, p.x, p.z, p.turretAngle, shake);
@@ -484,9 +502,7 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
              ctx.moveTo(sLeft.x, sLeft.y); ctx.lineTo(sRight.x, sRight.y);
           }
       }
-      // Grid is dim green
-      ctx.strokeStyle = 'rgba(0, 255, 0, 0.2)';
-      ctx.stroke();
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.2)'; ctx.stroke();
 
       // --- 3D PAINTER'S QUEUE ---
       let renderQueue = [];
@@ -504,11 +520,10 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
          });
       };
 
-      // Queue World
       gs.obstacles.forEach(o => queueModel(MODELS[o.type], o.x, 0, o.z, o.angle, '#0f0'));
       gs.enemies.forEach(e => {
          let h = e.type === 'saucer' ? (e.y || 120) : 0;
-         queueModel(MODELS[e.type], e.x, h, e.z, e.angle, '#fa0'); // Enemies are glowing ORANGE
+         queueModel(MODELS[e.type], e.x, h, e.z, e.angle, '#fa0'); 
       });
 
       // Queue Projectiles
@@ -528,35 +543,47 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
          }
       });
 
-      // Queue Particles (Explosion Vector Shards)
+      // Queue Explosions
       gs.particles.forEach(pt => {
-          let p1 = transformParticle(0, 0, -pt.len/2, pt.x, pt.y, pt.z, pt.rx, pt.ry, pt.rz, p.x, p.z, p.turretAngle, shake);
-          let p2 = transformParticle(0, 0, pt.len/2, pt.x, pt.y, pt.z, pt.rx, pt.ry, pt.rz, p.x, p.z, p.turretAngle, shake);
-          if (p1.z >= 10 && p2.z >= 10) {
-              renderQueue.push({
-                  zDist: (p1.z + p2.z) / 2, isParticle: true, color: pt.color,
-                  pts: [projectToScreen(p1), projectToScreen(p2)]
-              });
+          if (pt.type === 'shockwave') {
+               let camPt = transformPoint(0, 0, 0, pt.x, pt.z, 0, p.x, p.z, p.turretAngle, shake);
+               camPt.y += pt.y;
+               if (camPt.z > 10) {
+                   let screenPt = projectToScreen(camPt);
+                   let s = Math.max(1, (pt.radius * FOV) / camPt.z);
+                   let alpha = Math.max(0, 1 - (pt.radius / pt.maxRadius));
+                   renderQueue.push({
+                       zDist: camPt.z, isShockwave: true, alpha: alpha, color: pt.color, radius: s, pt: screenPt
+                   });
+               }
+          } else {
+              let p1 = transformParticle(0, 0, -pt.len/2, pt.x, pt.y, pt.z, pt.rx, pt.ry, pt.rz, p.x, p.z, p.turretAngle, shake);
+              let p2 = transformParticle(0, 0, pt.len/2, pt.x, pt.y, pt.z, pt.rx, pt.ry, pt.rz, p.x, p.z, p.turretAngle, shake);
+              if (p1.z >= 10 && p2.z >= 10) {
+                  renderQueue.push({
+                      zDist: (p1.z + p2.z) / 2, isParticle: true, color: pt.color,
+                      pts: [projectToScreen(p1), projectToScreen(p2)]
+                  });
+              }
           }
       });
 
-      // Draw Queue Back-to-Front
+      // Draw Queue Back-to-Front (NO SHADOWS OR GLOWS FOR PURE VECTORS)
       renderQueue.sort((a, b) => b.zDist - a.zDist);
       renderQueue.forEach(item => {
-         ctx.beginPath();
-         item.pts.forEach((pt, i) => { if (i === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y); });
-         if (!item.isParticle && !item.isProjectile) {
-            ctx.closePath();
-            ctx.fillStyle = '#000'; ctx.fill(); // Painter's wipe
+         if (item.isShockwave) {
+             ctx.beginPath(); ctx.arc(item.pt.x, item.pt.y, item.radius, 0, Math.PI*2);
+             ctx.strokeStyle = `rgba(255, 255, 255, ${item.alpha})`; ctx.lineWidth = 4 * item.alpha;
+             ctx.stroke();
+         } else {
+             ctx.beginPath();
+             item.pts.forEach((pt, i) => { if (i === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y); });
+             if (!item.isParticle && !item.isProjectile) {
+                ctx.closePath(); ctx.fillStyle = '#000'; ctx.fill(); 
+             }
+             ctx.strokeStyle = item.color; ctx.lineWidth = item.lineWidth || 2;
+             ctx.stroke();
          }
-         ctx.strokeStyle = item.color;
-         ctx.lineWidth = item.lineWidth || 2;
-         
-         // Intense Glow for Vectors
-         ctx.shadowColor = item.color;
-         ctx.shadowBlur = 10; 
-         ctx.stroke();
-         ctx.shadowBlur = 0; // Reset for performance
       });
 
       // --- DRAW GLITTER DUST ---
@@ -567,40 +594,32 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
              let screenPt = projectToScreen(camPt);
              let alpha = Math.max(0, d.life / 80);
              let size = Math.max(1, 1000 / camPt.z);
-             ctx.fillStyle = d.color;
-             ctx.globalAlpha = alpha;
+             ctx.fillStyle = d.color; ctx.globalAlpha = alpha;
              ctx.fillRect(screenPt.x - size/2, screenPt.y - size/2, size, size);
              ctx.globalAlpha = 1.0;
          }
       });
 
-      // Red Flash overlay when hit
       if (p.invuln > 0 && p.invuln > 40) {
          ctx.fillStyle = `rgba(255, 0, 0, ${(p.invuln - 40) / 20 * 0.4})`;
          ctx.fillRect(0,0,NATIVE_W,NATIVE_H);
       }
 
       // --- 1:1 AUTHENTIC HUD ---
-      ctx.lineWidth = 2;
-      ctx.setLineDash([4, 4]); // Dotted retro borders
+      ctx.lineWidth = 2; ctx.setLineDash([4, 4]);
 
-      // Left Box (Enemy Warning)
-      ctx.strokeStyle = '#fff';
-      ctx.strokeRect(30, 20, 200, 100);
+      ctx.strokeStyle = '#fff'; ctx.strokeRect(30, 20, 200, 100);
       let closestEnemy = Math.min(...gs.enemies.map(e => Math.hypot(e.x - p.x, e.z - p.z)));
       if (closestEnemy < 3500 && Math.floor(Date.now() / 250) % 2 === 0) {
           drawCRTText(ctx, "ENEMY", 130, 50, '#f00', '24px "VT323", monospace');
           drawCRTText(ctx, "IN RANGE", 130, 80, '#f00', '24px "VT323", monospace');
       }
 
-      // Center Box (Radar)
-      ctx.strokeRect(270, 20, 260, 100);
-      ctx.setLineDash([]); // Solid lines for radar internals
+      ctx.strokeRect(270, 20, 260, 100); ctx.setLineDash([]); 
       ctx.strokeStyle = '#fff'; ctx.beginPath();
-      ctx.moveTo(400, 100); ctx.lineTo(330, 30);
-      ctx.moveTo(400, 100); ctx.lineTo(470, 30);
+      ctx.moveTo(400, 100); ctx.lineTo(330, 30); ctx.moveTo(400, 100); ctx.lineTo(470, 30);
       ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.fillRect(398, 98, 4, 4); // Player Blip
+      ctx.fillStyle = '#fff'; ctx.fillRect(398, 98, 4, 4); 
       
       gs.enemies.forEach(e => {
           let dx = e.x - p.x; let dz = e.z - p.z;
@@ -608,7 +627,7 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
           let angle = Math.atan2(dx, dz) - p.turretAngle;
           while(angle > Math.PI) angle -= Math.PI * 2;
           while(angle < -Math.PI) angle += Math.PI * 2;
-          if (dist < 6000 && Math.abs(angle) < Math.PI/3) { // Inside the cone
+          if (dist < 6000 && Math.abs(angle) < Math.PI/3) { 
               let rDist = (dist / 6000) * 70;
               let rx = 400 + Math.sin(angle) * rDist;
               let ry = 100 - Math.cos(angle) * rDist;
@@ -616,11 +635,7 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
           }
       });
 
-      // Right Box (Score & Health)
-      ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = '#fff';
-      ctx.strokeRect(570, 20, 200, 100);
-      ctx.setLineDash([]);
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = '#fff'; ctx.strokeRect(570, 20, 200, 100); ctx.setLineDash([]);
       drawCRTText(ctx, `SCORE   ${gs.score}`, 585, 50, '#fff', '22px "VT323", monospace', 'left');
       drawCRTText(ctx, `HIGH    ${gs.highScore}`, 585, 75, '#fff', '22px "VT323", monospace', 'left');
       drawCRTText(ctx, `HP:`, 585, 105, '#0f0', '22px "VT323", monospace', 'left');
@@ -629,7 +644,7 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
           else { ctx.strokeStyle = '#0f0'; ctx.strokeRect(625 + i*18, 93, 12, 14); }
       }
 
-      // Crosshair
+      // Crosshair - Fixed exactly at screen center / horizon vanishing point
       ctx.strokeStyle = '#0f0'; ctx.beginPath();
       ctx.moveTo(NATIVE_W/2 - 20, NATIVE_H/2 + 20); ctx.lineTo(NATIVE_W/2 - 5, NATIVE_H/2 + 20);
       ctx.moveTo(NATIVE_W/2 + 20, NATIVE_H/2 + 20); ctx.lineTo(NATIVE_W/2 + 5, NATIVE_H/2 + 20);
@@ -637,7 +652,6 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
       ctx.moveTo(NATIVE_W/2, NATIVE_H/2 + 40); ctx.lineTo(NATIVE_W/2, NATIVE_H/2 + 25);
       ctx.stroke();
 
-      // Wave Announcements
       if (gs.enemies.length === 0 && gs.waveTimer > 0) {
          if (gs.waveTimer > 120) drawCRTText(ctx, "AREA SECURED", NATIVE_W/2, NATIVE_H/2 - 80, '#0f0', '50px "VT323", monospace');
          if (gs.waveTimer < 100 && Math.floor(gs.waveTimer / 15) % 2 === 0) {
@@ -645,7 +659,6 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
          }
       }
 
-      // Mouse Lock Prompt
       if (document.pointerLockElement !== canvasRef.current && gs.status === 'playing') {
           ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'; ctx.fillRect(0,0,NATIVE_W,NATIVE_H);
           drawCRTText(ctx, "CLICK SCREEN TO LOCK MOUSE & PLAY", NATIVE_W/2, NATIVE_H/2, '#0f0', '40px "VT323", monospace');
