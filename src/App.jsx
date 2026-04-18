@@ -350,6 +350,7 @@ const BootScreen = () => {
     let animationFrameId;
     let tick = 0;
 
+    // Build the initial boot strings
     const bootLines = [
       "BIOS DATE 04/17/82 14:32:01 VER 1.05",
       "CPU: BASS-Z80A Processor at 3.58 MHz",
@@ -357,17 +358,24 @@ const BootScreen = () => {
       " ",
       "Initializing I/O Ports... OK",
       "Mounting /dev/sda1... OK",
-      "Loading BASS_OS.SYS...",
-      "0x00A1: FF 00 1A 2B 4C 8D  LD A, $FF",
-      "0x00A7: 21 00 80           LD HL, $8000",
-      "0x00AA: 77 23 10 FB        JR NZ, $00AA",
+      "Loading BASS_OS.SYS..."
+    ];
+
+    // Programmatically generate 40 lines of fake memory parsing!
+    for(let i = 0; i < 40; i++) {
+        let addr = (0x00A1 + i * 6).toString(16).toUpperCase().padStart(4, '0');
+        let hex = Array.from({length: 4}, () => Math.floor(Math.random()*256).toString(16).toUpperCase().padStart(2, '0')).join(' ');
+        bootLines.push(`0x${addr}: ${hex}  LD A, (HL)`);
+    }
+
+    bootLines.push(
       "Audio DSP Core... WAKING UP",
       "Synthesizing Waveforms...",
       "Caching PCM Buffers to VRAM...",
       "Compiling Arpeggios...",
       "System OK.",
       "Awaiting Audio Context Ready..."
-    ];
+    );
 
     let currentLines = [];
 
@@ -377,14 +385,16 @@ const BootScreen = () => {
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Add a new line of faux code every 15 frames
-      if (tick % 15 === 0 && currentLines.length < bootLines.length) {
+      // Add a new line of faux code every 5 frames (very fast!)
+      if (tick % 5 === 0 && currentLines.length < bootLines.length) {
         currentLines.push(bootLines[currentLines.length]);
       }
 
-      // Draw the terminal text
+      // Draw the terminal text, scrolling up if it exceeds the screen height
       ctx.textAlign = 'left';
-      currentLines.forEach((line, i) => {
+      let startIdx = Math.max(0, currentLines.length - 17); // Keep only the last 17 lines on screen
+      
+      currentLines.slice(startIdx).forEach((line, i) => {
         drawCRTText(ctx, line, 40, 60 + (i * 30), '#0f0', '24px "VT323", monospace', 'left');
       });
 
@@ -392,7 +402,8 @@ const BootScreen = () => {
       if (currentLines.length > 0 && Math.floor(tick / 20) % 2 === 0) {
          let lastLine = currentLines[currentLines.length-1];
          let textWidth = ctx.measureText(lastLine).width;
-         drawCRTText(ctx, "_", 40 + textWidth + 5, 60 + ((currentLines.length-1) * 30), '#0f0', '24px "VT323", monospace', 'left');
+         let displayIdx = Math.min(currentLines.length - 1, 16);
+         drawCRTText(ctx, "_", 40 + textWidth + 5, 60 + (displayIdx * 30), '#0f0', '24px "VT323", monospace', 'left');
       }
     };
 
@@ -406,8 +417,13 @@ const BootScreen = () => {
   }, []);
 
   return (
-    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-auto bg-transparent">
-      <canvas ref={canvasRef} width={800} height={600} className="w-full h-full object-fill bg-transparent cursor-none" />
+    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-auto bg-black">
+      <canvas ref={canvasRef} width={800} height={600} className="w-full h-full object-fill bg-transparent cursor-none absolute inset-0 z-10" />
+      
+      {/* Loading GIF Overlay in the bottom right corner */}
+      <div className="absolute bottom-8 right-12 z-20 opacity-80">
+         <img src="load.gif" alt="Loading..." className="w-16 h-16 object-contain mix-blend-screen" />
+      </div>
     </div>
   );
 };
@@ -5459,20 +5475,11 @@ const handleStart = async () => {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     audioContextRef.current = new AudioContext();
     
-    const startTime = Date.now();
-    
     // Build the massive audio tracks in the background while the boot screen runs!
     const bufs = await buildTracks(audioContextRef.current);
     bgmBuffersRef.current = bufs;
     
-    const elapsed = Date.now() - startTime;
-    const minBootTime = 4000; // Force it to stay on the boot screen for at least 4 seconds
-    
-    // If the audio built too fast, pause here to let the boot animation finish
-    if (elapsed < minBootTime) {
-       await new Promise(resolve => setTimeout(resolve, minBootTime - elapsed));
-    }
-
+    // Audio is ready! Skip any wait times and violently cut to the menu!
     setGameState('menu');
     window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'menuPlay' }));
   };
