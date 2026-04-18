@@ -60,9 +60,9 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
     status: 'start',
     score: 0,
     highScore: 0,
-    wave: 1,
+    wave: 0,
     waveTimer: 0,
-    player: { x: 0, z: 0, vx: 0, vz: 0, bodyAngle: 0, turretAngle: 0, cooldown: 0, hp: 5, maxHp: 5, invuln: 0, shake: 0 },
+    player: { x: 0, y: 15, z: 0, vx: 0, vz: 0, turretYaw: 0, turretPitch: 0, cooldown: 0, hp: 5, maxHp: 5, invuln: 0, shake: 0 },
     enemies: [],
     projectiles: [],
     obstacles: [],
@@ -82,7 +82,11 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
     
     const handleMouseMove = e => {
       if (document.pointerLockElement === canvas && state.current.status === 'playing') {
-        state.current.player.turretAngle -= e.movementX * 0.003; 
+        let p = state.current.player;
+        p.turretYaw += e.movementX * 0.003; 
+        // FPS standard: Mouse down (positive Y) pushes pitch down (negative radians)
+        p.turretPitch -= e.movementY * 0.003; 
+        p.turretPitch = Math.max(-Math.PI/3, Math.min(Math.PI/3, p.turretPitch)); // Clamp looking up/down
       }
     };
 
@@ -131,7 +135,7 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
       for(let i=0; i<150; i++) {
          strs.push({
             angle: Math.random() * Math.PI * 2,
-            height: 100 + Math.random() * 300,
+            height: 100 + Math.random() * 400, // Spread further up
             size: Math.random() > 0.8 ? 2 : 1,
             flicker: Math.random() * Math.PI * 2
          });
@@ -179,12 +183,10 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
     const triggerExplosion = (ex, ey, ez, color) => {
         playAudio('boom');
         
-        // 1. Expanding 3D Shockwave
         state.current.particles.push({
             type: 'shockwave', x: ex, y: ey, z: ez, radius: 1, maxRadius: 250, color: '#fff'
         });
 
-        // 2. Vector Debris Shards (Spinning chunks)
         for(let i=0; i<15; i++) {
             state.current.particles.push({
                 type: 'shard', x: ex, y: ey + 20, z: ez,
@@ -195,7 +197,6 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
             });
         }
 
-        // 3. Dense Glittering Spark Dust
         const colors = ['#ffffff', '#ffaa00', '#ff0000', color];
         for(let i=0; i<100; i++) {
             state.current.dust.push({
@@ -207,38 +208,58 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
         }
     };
 
-// --- 3D MATH CORE ---
-    const transformPoint = (px, py, pz, objX, objZ, objAngle, camX, camZ, camAngle, shakeOffset) => {
+    // --- UPGRADED 3D MATH CORE (Incorporates Pitch) ---
+    const transformPoint = (px, py, pz, objX, objY, objZ, objAngle, camX, camY, camZ, camYaw, camPitch, shakeOffset) => {
+      // 1. Rotate locally around object origin
       let cosO = Math.cos(objAngle); let sinO = Math.sin(objAngle);
-      // FIX: Corrected object local rotation matrix
       let rx = px * cosO + pz * sinO; 
       let rz = -px * sinO + pz * cosO;
-      let wx = rx + objX; let wz = rz + objZ;
-      let dx = wx - camX; let dz = wz - camZ;
-      // FIX: Corrected camera space rotation matrix
-      let cosC = Math.cos(camAngle); let sinC = Math.sin(camAngle);
-      let cx = dx * cosC - dz * sinC; 
-      let cz = dx * sinC + dz * cosC;
-      return { x: cx + shakeOffset, y: py + shakeOffset, z: cz };
+      
+      // 2. Translate to World Coordinates
+      let wx = rx + objX; let wy = py + objY; let wz = rz + objZ;
+      
+      // 3. Subtract Camera Position
+      let dx = wx - camX; let dy = wy - camY; let dz = wz - camZ;
+      
+      // 4. Apply Camera Yaw (Y-axis rotation)
+      let cosY = Math.cos(camYaw); let sinY = Math.sin(camYaw);
+      let cx = dx * cosY - dz * sinY; 
+      let cz = dx * sinY + dz * cosY;
+      
+      // 5. Apply Camera Pitch (X-axis rotation)
+      let cosP = Math.cos(camPitch); let sinP = Math.sin(camPitch);
+      let fy = dy * cosP - cz * sinP;
+      let fz = dy * sinP + cz * cosP;
+      
+      return { x: cx + shakeOffset, y: fy + shakeOffset, z: fz };
     };
 
-    const transformParticle = (ptX, ptY, ptZ, pX, pY, pZ, rx, ry, rz, camX, camZ, camAngle, shakeOffset) => {
+    const transformParticle = (ptX, ptY, ptZ, pX, pY, pZ, rx, ry, rz, camX, camY, camZ, camYaw, camPitch, shakeOffset) => {
         let cx = Math.cos(rx), sx = Math.sin(rx), cy = Math.cos(ry), sy = Math.sin(ry), cz = Math.cos(rz), sz = Math.sin(rz);
         let x1 = ptX * cz - ptY * sz; let y1 = ptX * sz + ptY * cz; let z1 = ptZ;
         let x2 = x1 * cy + z1 * sy; let y2 = y1; let z2 = -x1 * sy + z1 * cy;
         let x3 = x2; let y3 = y2 * cx - z2 * sx; let z3 = y2 * sx + z2 * cx;
+        
         let wx = x3 + pX; let wy = y3 + pY; let wz = z3 + pZ;
-        let dx = wx - camX; let dz = wz - camZ;
-        // FIX: Corrected camera space rotation matrix for particles
-        let cosC = Math.cos(camAngle), sinC = Math.sin(camAngle);
-        return { x: (dx * cosC - dz * sinC) + shakeOffset, y: wy + shakeOffset, z: (dx * sinC + dz * cosC) };
+        
+        let dx = wx - camX; let dy = wy - camY; let dz = wz - camZ;
+        
+        let cosY = Math.cos(camYaw), sinY = Math.sin(camYaw);
+        let cxPt = dx * cosY - dz * sinY;
+        let czPt = dx * sinY + dz * cosY;
+
+        let cosP = Math.cos(camPitch), sinP = Math.sin(camPitch);
+        let fy = dy * cosP - czPt * sinP;
+        let fz = dy * sinP + czPt * cosP;
+
+        return { x: cxPt + shakeOffset, y: fy + shakeOffset, z: fz };
     };
 
     const projectToScreen = (camPt) => {
       if (camPt.z < 10) return null;
       let scale = FOV / camPt.z;
-      // Horizon locked exactly to y: 20 relative offset
-      return { x: (NATIVE_W / 2) + (camPt.x * scale), y: (NATIVE_H / 2) - (camPt.y * scale) + 20 };
+      // Fixed purely to center screen. Pitch physically moves the world data!
+      return { x: (NATIVE_W / 2) + (camPt.x * scale), y: (NATIVE_H / 2) - (camPt.y * scale) };
     };
 
     // --- GAME LOOP ---
@@ -253,7 +274,7 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
 
       if (gs.status === 'start' && keys['enter']) {
         gs.status = 'playing'; gs.score = 0; gs.wave = 0; gs.waveTimer = 180;
-        gs.player = { x: 0, z: 0, vx: 0, vz: 0, bodyAngle: 0, turretAngle: 0, cooldown: 0, hp: 5, maxHp: 5, invuln: 0, shake: 0 };
+        gs.player = { x: 0, y: 15, z: 0, vx: 0, vz: 0, turretYaw: 0, turretPitch: 0, cooldown: 0, hp: 5, maxHp: 5, invuln: 0, shake: 0 };
         let env = buildEnvironment();
         gs.mountains = env.mts; gs.stars = env.strs; gs.obstacles = env.obs;
         gs.enemies = []; gs.projectiles = []; gs.particles = []; gs.dust = [];
@@ -266,17 +287,27 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
       if (p.invuln > 0) p.invuln--;
       if (p.shake > 0.5) p.shake *= 0.8; else p.shake = 0;
 
-      // WASD Hull Movement & Heavy Physics
-      let thrust = 0;
-      if (keys['w']) thrust = 1.8;
-      if (keys['s']) thrust = -1.8;
-      if (keys['a']) p.bodyAngle -= 0.04;
-      if (keys['d']) p.bodyAngle += 0.04;
+      // --- FPS MOVEMENT PHYSICS ---
+      let moveX = 0; let moveZ = 0;
+      if (keys['w']) moveZ = 1;
+      if (keys['s']) moveZ = -1;
+      if (keys['a']) moveX = -1;
+      if (keys['d']) moveX = 1;
 
-      p.vx += Math.sin(p.bodyAngle) * thrust;
-      p.vz += Math.cos(p.bodyAngle) * thrust;
+      if (moveX !== 0 || moveZ !== 0) {
+          let mag = Math.hypot(moveX, moveZ);
+          moveX /= mag; moveZ /= mag;
+          
+          let thrust = 1.8;
+          let sinY = Math.sin(p.turretYaw);
+          let cosY = Math.cos(p.turretYaw);
+          
+          // FPS Strafe mapping relative to Turret Yaw
+          p.vx += (moveZ * sinY + moveX * cosY) * thrust;
+          p.vz += (moveZ * cosY - moveX * sinY) * thrust;
+      }
       
-      p.vx *= 0.90; p.vz *= 0.90; 
+      p.vx *= 0.88; p.vz *= 0.88; 
 
       let nextX = p.x + p.vx;
       let nextZ = p.z + p.vz;
@@ -292,12 +323,15 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
       if (Math.abs(p.x) > WORLD_SIZE) p.x = Math.sign(p.x) * WORLD_SIZE;
       if (Math.abs(p.z) > WORLD_SIZE) p.z = Math.sign(p.z) * WORLD_SIZE;
 
-      // Mouse Shooting - Perfectly aligned to crosshair horizon
+      // --- PITCH-AWARE SHOOTING ---
       if (p.cooldown > 0) p.cooldown--;
       if (keys['mouse0'] && p.cooldown <= 0 && document.pointerLockElement) {
+         let speed = 40;
          gs.projectiles.push({
-            x: p.x + Math.sin(p.turretAngle)*20, z: p.z + Math.cos(p.turretAngle)*20, y: 15,
-            vx: Math.sin(p.turretAngle) * 40, vz: Math.cos(p.turretAngle) * 40,
+            x: p.x, y: p.y, z: p.z,
+            vx: Math.sin(p.turretYaw) * Math.cos(p.turretPitch) * speed, 
+            vy: Math.sin(p.turretPitch) * speed, // Bullet physically arcs upward if looking up
+            vz: Math.cos(p.turretYaw) * Math.cos(p.turretPitch) * speed,
             isPlayer: true, life: 60
          });
          p.cooldown = 35; playAudio('shoot');
@@ -306,21 +340,22 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
       // Update Projectiles
       for (let i = gs.projectiles.length - 1; i >= 0; i--) {
          let pr = gs.projectiles[i];
-         pr.x += pr.vx; pr.z += pr.vz; pr.life--;
+         pr.x += pr.vx; pr.y += pr.vy; pr.z += pr.vz; pr.life--;
          
          let hit = false;
          for (let o of gs.obstacles) {
-            if (Math.hypot(o.x - pr.x, o.z - pr.z) < 60) { hit = true; break; }
+            if (Math.hypot(o.x - pr.x, o.z - pr.z) < 60 && pr.y < 80) { hit = true; break; }
          }
 
          if (pr.isPlayer && !hit) {
             for (let j = gs.enemies.length - 1; j >= 0; j--) {
                let e = gs.enemies[j];
-               if (Math.hypot(e.x - pr.x, e.z - pr.z) < 55) {
+               // Adjusted height hitbox for UFOs
+               if (Math.hypot(e.x - pr.x, e.z - pr.z) < 55 && Math.abs(e.y - pr.y) < 40) {
                   gs.score += e.type === 'saucer' ? 5000 : 1000;
                   if (gs.score > gs.highScore) gs.highScore = gs.score;
                   hit = true; 
-                  triggerExplosion(e.x, 15, e.z, '#fa0');
+                  triggerExplosion(e.x, e.y, e.z, '#fa0');
                   gs.enemies.splice(j, 1);
                   break;
                }
@@ -328,7 +363,7 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
          }
 
          if (!pr.isPlayer && !hit && p.invuln <= 0) {
-            if (Math.hypot(p.x - pr.x, p.z - pr.z) < 40) {
+            if (Math.hypot(p.x - pr.x, p.z - pr.z) < 40 && Math.abs(p.y - pr.y) < 30) {
                hit = true; p.hp--; p.invuln = 60; p.shake = 40; playAudio('hit');
                if (p.hp <= 0) { gs.status = 'gameover'; if (document.pointerLockElement) document.exitPointerLock(); }
             }
@@ -348,7 +383,7 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
                 let ang = Math.random() * Math.PI * 2;
                 gs.enemies.push({
                     type: Math.random() > 0.85 ? 'saucer' : 'tank',
-                    x: p.x + Math.sin(ang) * dist, z: p.z + Math.cos(ang) * dist,
+                    x: p.x + Math.sin(ang) * dist, z: p.z + Math.cos(ang) * dist, y: 0,
                     angle: Math.random() * Math.PI * 2, state: 'hunt', timer: Math.random()*100
                 });
             }
@@ -356,9 +391,8 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
          }
       }
 
-      // Progressive Enemy Difficulty
       let enemySpeed = Math.min(10, 3 + (gs.wave * 0.4));
-      let enemyAggro = Math.max(60, 240 - (gs.wave * 20)); // Starts slow (220 frames), gets faster each wave
+      let enemyAggro = Math.max(60, 240 - (gs.wave * 20)); 
 
       gs.enemies.forEach(e => {
          let dx = p.x - e.x; let dz = p.z - e.z;
@@ -366,6 +400,7 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
          let targetAngle = Math.atan2(dx, dz);
 
          if (e.type === 'tank') {
+            e.y = 0;
             let diff = targetAngle - e.angle;
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
@@ -375,25 +410,23 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
             else if (dist < 400) { e.x -= Math.sin(e.angle) * enemySpeed; e.z -= Math.cos(e.angle) * enemySpeed; }
 
             e.timer++;
-            // Enemies won't fire until their timer exceeds the progressive aggro threshold
             if (e.timer > enemyAggro && Math.abs(diff) < 0.15 && dist < 4000) {
                gs.projectiles.push({
                   x: e.x + Math.sin(e.angle)*40, z: e.z + Math.cos(e.angle)*40, y: 15,
-                  vx: Math.sin(e.angle) * 25, vz: Math.cos(e.angle) * 25,
+                  vx: Math.sin(e.angle) * 25, vy: 0, vz: Math.cos(e.angle) * 25,
                   isPlayer: false, life: 100
                });
                e.timer = 0; playAudio('enemy_shoot');
             }
          } else if (e.type === 'saucer') {
             e.x += Math.sin(Date.now() * 0.001) * 12; e.z += Math.cos(Date.now() * 0.0013) * 12;
-            e.y = 150 + Math.sin(Date.now() * 0.002) * 50; 
+            e.y = 200 + Math.sin(Date.now() * 0.002) * 80; 
          }
       });
 
       // Update Explosive Particles (Shards & Shockwaves)
       for (let i = gs.particles.length - 1; i >= 0; i--) {
          let pt = gs.particles[i];
-         
          if (pt.type === 'shockwave') {
              pt.radius += 15;
              if (pt.radius > pt.maxRadius) gs.particles.splice(i, 1);
@@ -404,7 +437,6 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
              pt.vx *= 0.98; pt.vz *= 0.98; 
              if (pt.y < 0) { pt.y = 0; pt.vy *= -0.5; pt.vx *= 0.8; pt.vz *= 0.8; } 
              
-             // Shards leave a trail of trailing sparks
              if (Math.random() < 0.3) {
                  gs.dust.push({
                     x: pt.x, y: pt.y, z: pt.z,
@@ -412,7 +444,6 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
                     life: 20 + Math.random()*20, color: pt.color
                  });
              }
-
              pt.life--; if (pt.life <= 0) gs.particles.splice(i, 1);
          }
       }
@@ -427,6 +458,8 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
          d.life--; if (d.life <= 0) gs.dust.splice(i, 1);
       }
     };
+
+    const lerpColor = (r1, g1, b1, r2, g2, b2, t) => `rgb(${Math.floor(r1 + (r2 - r1) * t)}, ${Math.floor(g1 + (g2 - g1) * t)}, ${Math.floor(b1 + (b2 - b1) * t)})`;
 
     const drawCRTText = (ctx, text, x, y, color, font, align = 'center') => {
       ctx.font = font; ctx.textAlign = align; ctx.fillStyle = color; ctx.fillText(text, x, y);
@@ -447,67 +480,89 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
         drawCRTText(ctx, "BATTLEZONE", NATIVE_W/2, 200, '#0f0', '80px "VT323", monospace');
         drawCRTText(ctx, "VECTOR ASSAULT", NATIVE_W/2, 260, '#0f0', '30px "VT323", monospace');
         drawCRTText(ctx, "PRESS ENTER TO START", NATIVE_W/2, 380, '#fff', '24px "VT323", monospace');
-        drawCRTText(ctx, "WASD: Drive Hull  |  MOUSE: Aim Turret", NATIVE_W/2, 450, '#fa0', '22px "VT323", monospace');
+        drawCRTText(ctx, "WASD: Drive FPS  |  MOUSE: Aim & Pitch", NATIVE_W/2, 450, '#fa0', '22px "VT323", monospace');
         drawCRTText(ctx, "CLICK TO SHOOT", NATIVE_W/2, 480, '#fa0', '22px "VT323", monospace');
         return;
       }
 
+      // --- DAY / NIGHT CYCLE ---
+      let cycleTime = (Math.sin(Date.now() * 0.0001) + 1) / 2; // 0 (Night) to 1 (Day)
+      let mountColor = lerpColor(40, 10, 10,  180, 80, 30, cycleTime); 
+      let gridColor = lerpColor(0, 40, 0,  0, 255, 0, cycleTime);
+      let starAlpha = 1 - (cycleTime * 0.8); // Stars fade during the day
+
       // --- DRAW SKY (STARS) ---
       gs.stars.forEach(s => {
-          let angleDiff = s.angle - p.turretAngle;
+          let angleDiff = s.angle - p.turretYaw;
           while(angleDiff > Math.PI) angleDiff -= Math.PI * 2;
           while(angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-          if (Math.abs(angleDiff) < Math.PI / 2) { 
-              let screenX = NATIVE_W/2 + Math.tan(angleDiff) * FOV;
-              let screenY = s.height + shake;
-              let alpha = 0.5 + Math.sin(Date.now() * 0.005 + s.flicker) * 0.5;
-              ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-              ctx.fillRect(screenX, screenY, s.size, s.size);
+          if (Math.abs(angleDiff) < Math.PI / 1.5) { 
+              let mx = p.x + Math.sin(s.angle) * 10000;
+              let mz = p.z + Math.cos(s.angle) * 10000;
+              let camPt = transformPoint(mx, s.height, mz, 0,0,0, p.x, p.y, p.z, p.turretYaw, p.turretPitch, shake);
+              if (camPt.z > 10) {
+                 let sPt = projectToScreen(camPt);
+                 let alpha = (0.3 + Math.sin(Date.now() * 0.005 + s.flicker) * 0.3) * starAlpha;
+                 ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                 ctx.fillRect(sPt.x, sPt.y, s.size, s.size);
+              }
           }
       });
 
-      // --- DRAW HORIZON MOUNTAINS ---
-      ctx.strokeStyle = '#0f0'; ctx.beginPath();
-      let started = false;
-      for (let i = 0; i <= gs.mountains.length; i++) {
-          let m = gs.mountains[i % gs.mountains.length];
-          let rawAngle = m.angle;
-          let angleDiff = rawAngle - p.turretAngle;
-          while(angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-          while(angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-
-          if (Math.abs(angleDiff) < Math.PI / 2) { 
-              let screenX = NATIVE_W/2 + Math.tan(angleDiff) * FOV;
-              let screenY = NATIVE_H/2 + 20 - m.height + shake;
-              if (!started) { ctx.moveTo(screenX, screenY); started = true; }
-              else { ctx.lineTo(screenX, screenY); }
-          } else {
-              started = false;
-          }
-      }
-      ctx.stroke();
-
       // --- DRAW INFINITE FLOOR GRID ---
       ctx.beginPath();
-      for(let x = -8; x <= 8; x++) {
+      for(let x = -10; x <= 10; x++) {
           let gridX = Math.floor(p.x / GRID_SIZE) * GRID_SIZE + (x * GRID_SIZE);
-          let pNear = transformPoint(gridX, 0, p.z, 0, 0, 0, p.x, p.z, p.turretAngle, shake);
-          let pFar = transformPoint(gridX, 0, p.z + 8000, 0, 0, 0, p.x, p.z, p.turretAngle, shake);
-          if (pNear.z > 10 && pFar.z > 10) {
-             let sNear = projectToScreen(pNear); let sFar = projectToScreen(pFar);
+          let pNear = transformPoint(gridX, 0, p.z - 2000, 0,0,0, p.x, p.y, p.z, p.turretYaw, p.turretPitch, shake);
+          let pFar = transformPoint(gridX, 0, p.z + 8000, 0,0,0, p.x, p.y, p.z, p.turretYaw, p.turretPitch, shake);
+          if (pFar.z > 10) {
+             let sNear = projectToScreen(pNear.z > 10 ? pNear : {x: pNear.x, y: pNear.y, z: 10});
+             let sFar = projectToScreen(pFar);
              ctx.moveTo(sNear.x, sNear.y); ctx.lineTo(sFar.x, sFar.y);
           }
       }
-      for(let z = -2; z <= 12; z++) {
+      for(let z = -4; z <= 14; z++) {
           let gridZ = Math.floor(p.z / GRID_SIZE) * GRID_SIZE + (z * GRID_SIZE);
-          let pLeft = transformPoint(p.x - 8000, 0, gridZ, 0, 0, 0, p.x, p.z, p.turretAngle, shake);
-          let pRight = transformPoint(p.x + 8000, 0, gridZ, 0, 0, 0, p.x, p.z, p.turretAngle, shake);
+          let pLeft = transformPoint(p.x - 8000, 0, gridZ, 0,0,0, p.x, p.y, p.z, p.turretYaw, p.turretPitch, shake);
+          let pRight = transformPoint(p.x + 8000, 0, gridZ, 0,0,0, p.x, p.y, p.z, p.turretYaw, p.turretPitch, shake);
           if (pLeft.z > 10 && pRight.z > 10) {
              let sLeft = projectToScreen(pLeft); let sRight = projectToScreen(pRight);
              ctx.moveTo(sLeft.x, sLeft.y); ctx.lineTo(sRight.x, sRight.y);
           }
       }
-      ctx.strokeStyle = 'rgba(0, 255, 0, 0.2)'; ctx.stroke();
+      ctx.strokeStyle = gridColor; ctx.stroke();
+
+      // --- DRAW SOLID MOUNTAIN MASK ---
+      ctx.fillStyle = '#000';
+      ctx.strokeStyle = mountColor;
+      ctx.beginPath();
+      let started = false;
+      let maskPts = [];
+      for (let i = 0; i <= gs.mountains.length; i++) {
+          let m = gs.mountains[i % gs.mountains.length];
+          let angleDiff = m.angle - p.turretYaw;
+          while(angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+          while(angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+          if (Math.abs(angleDiff) < Math.PI * 0.7) { 
+              let mx = p.x + Math.sin(m.angle) * m.dist;
+              let mz = p.z + Math.cos(m.angle) * m.dist;
+              let camPt = transformPoint(mx, m.height, mz, 0,0,0, p.x, p.y, p.z, p.turretYaw, p.turretPitch, shake);
+              if (camPt.z > 10) {
+                  let sPt = projectToScreen(camPt);
+                  if (!started) { ctx.moveTo(sPt.x, sPt.y); started = true; }
+                  else { ctx.lineTo(sPt.x, sPt.y); }
+                  maskPts.push(sPt);
+              } else { started = false; }
+          } else { started = false; }
+      }
+      if (maskPts.length > 0) {
+          ctx.lineTo(NATIVE_W + 1000, NATIVE_H + 1000);
+          ctx.lineTo(-1000, NATIVE_H + 1000);
+          ctx.closePath();
+          ctx.fill(); // Fills black underneath to hide stars/grid!
+      }
+      ctx.stroke();
 
       // --- 3D PAINTER'S QUEUE ---
       let renderQueue = [];
@@ -516,8 +571,7 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
          modelData.faces.forEach(face => {
             let projectedFace = []; let avgZ = 0; let valid = true;
             for (let pt of face) {
-               let camPt = transformPoint(pt[0], pt[1], pt[2], wx, wz, wAngle, p.x, p.z, p.turretAngle, shake);
-               camPt.y += wy; 
+               let camPt = transformPoint(pt[0], pt[1], pt[2], wx, wy, wz, wAngle, p.x, p.y, p.z, p.turretYaw, p.turretPitch, shake);
                if (camPt.z < 10) { valid = false; break; } 
                avgZ += camPt.z; projectedFace.push(projectToScreen(camPt));
             }
@@ -525,22 +579,16 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
          });
       };
 
-      gs.obstacles.forEach(o => queueModel(MODELS[o.type], o.x, 0, o.z, o.angle, '#0f0'));
-      gs.enemies.forEach(e => {
-         let h = e.type === 'saucer' ? (e.y || 120) : 0;
-         queueModel(MODELS[e.type], e.x, h, e.z, e.angle, '#fa0'); 
-      });
+      gs.obstacles.forEach(o => queueModel(MODELS[o.type], o.x, 0, o.z, o.angle, gridColor));
+      gs.enemies.forEach(e => queueModel(MODELS[e.type], e.x, e.y, e.z, e.angle, '#fa0'));
 
-      // Queue Projectiles
       gs.projectiles.forEach(pr => {
-         let camPt = transformPoint(0, 0, 0, pr.x, pr.z, 0, p.x, p.z, p.turretAngle, shake);
-         camPt.y += pr.y;
+         let camPt = transformPoint(0, 0, 0, pr.x, pr.y, pr.z, 0, p.x, p.y, p.z, p.turretYaw, p.turretPitch, shake);
          if (camPt.z >= 10) {
             let screenPt = projectToScreen(camPt);
             let s = Math.max(3, 1500 / camPt.z);
             let pulse = Math.abs(Math.sin(Date.now() * 0.02));
             let color = pr.isPlayer ? '#0f0' : (pulse > 0.5 ? '#f00' : '#fff'); 
-            
             renderQueue.push({
                zDist: camPt.z, isProjectile: true, color: color, lineWidth: pr.isPlayer ? 3 : 5,
                pts: [ {x: screenPt.x, y: screenPt.y - s}, {x: screenPt.x + s, y: screenPt.y}, {x: screenPt.x, y: screenPt.y + s}, {x: screenPt.x - s, y: screenPt.y} ]
@@ -548,32 +596,25 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
          }
       });
 
-      // Queue Explosions
       gs.particles.forEach(pt => {
           if (pt.type === 'shockwave') {
-               let camPt = transformPoint(0, 0, 0, pt.x, pt.z, 0, p.x, p.z, p.turretAngle, shake);
-               camPt.y += pt.y;
+               let camPt = transformPoint(0, 0, 0, pt.x, pt.y, pt.z, 0, p.x, p.y, p.z, p.turretYaw, p.turretPitch, shake);
                if (camPt.z > 10) {
                    let screenPt = projectToScreen(camPt);
                    let s = Math.max(1, (pt.radius * FOV) / camPt.z);
                    let alpha = Math.max(0, 1 - (pt.radius / pt.maxRadius));
-                   renderQueue.push({
-                       zDist: camPt.z, isShockwave: true, alpha: alpha, color: pt.color, radius: s, pt: screenPt
-                   });
+                   renderQueue.push({ zDist: camPt.z, isShockwave: true, alpha: alpha, color: pt.color, radius: s, pt: screenPt });
                }
           } else {
-              let p1 = transformParticle(0, 0, -pt.len/2, pt.x, pt.y, pt.z, pt.rx, pt.ry, pt.rz, p.x, p.z, p.turretAngle, shake);
-              let p2 = transformParticle(0, 0, pt.len/2, pt.x, pt.y, pt.z, pt.rx, pt.ry, pt.rz, p.x, p.z, p.turretAngle, shake);
+              let p1 = transformParticle(0, 0, -pt.len/2, pt.x, pt.y, pt.z, pt.rx, pt.ry, pt.rz, p.x, p.y, p.z, p.turretYaw, p.turretPitch, shake);
+              let p2 = transformParticle(0, 0, pt.len/2, pt.x, pt.y, pt.z, pt.rx, pt.ry, pt.rz, p.x, p.y, p.z, p.turretYaw, p.turretPitch, shake);
               if (p1.z >= 10 && p2.z >= 10) {
-                  renderQueue.push({
-                      zDist: (p1.z + p2.z) / 2, isParticle: true, color: pt.color,
-                      pts: [projectToScreen(p1), projectToScreen(p2)]
-                  });
+                  renderQueue.push({ zDist: (p1.z + p2.z) / 2, isParticle: true, color: pt.color, pts: [projectToScreen(p1), projectToScreen(p2)] });
               }
           }
       });
 
-      // Draw Queue Back-to-Front (NO SHADOWS OR GLOWS FOR PURE VECTORS)
+      // Draw Queue Back-to-Front (PURE VECTORS, NO GLOW)
       renderQueue.sort((a, b) => b.zDist - a.zDist);
       renderQueue.forEach(item => {
          if (item.isShockwave) {
@@ -593,8 +634,7 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
 
       // --- DRAW GLITTER DUST ---
       gs.dust.forEach(d => {
-         let camPt = transformPoint(0, 0, 0, d.x, d.z, 0, p.x, p.z, p.turretAngle, shake);
-         camPt.y += d.y;
+         let camPt = transformPoint(0, 0, 0, d.x, d.y, d.z, 0, p.x, p.y, p.z, p.turretYaw, p.turretPitch, shake);
          if (camPt.z > 10) {
              let screenPt = projectToScreen(camPt);
              let alpha = Math.max(0, d.life / 80);
@@ -629,7 +669,7 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
       gs.enemies.forEach(e => {
           let dx = e.x - p.x; let dz = e.z - p.z;
           let dist = Math.hypot(dx, dz);
-          let angle = Math.atan2(dx, dz) - p.turretAngle;
+          let angle = Math.atan2(dx, dz) - p.turretYaw;
           while(angle > Math.PI) angle -= Math.PI * 2;
           while(angle < -Math.PI) angle += Math.PI * 2;
           if (dist < 6000 && Math.abs(angle) < Math.PI/3) { 
@@ -649,18 +689,16 @@ export default function BattlezoneGame({ audioCtx, onMenu }) {
           else { ctx.strokeStyle = '#0f0'; ctx.strokeRect(625 + i*18, 93, 12, 14); }
       }
 
-      // Crosshair - Fixed exactly at screen center / horizon vanishing point
+      // Crosshair - Fixed exactly at screen center 
       ctx.strokeStyle = '#0f0'; ctx.beginPath();
-      ctx.moveTo(NATIVE_W/2 - 20, NATIVE_H/2 + 20); ctx.lineTo(NATIVE_W/2 - 5, NATIVE_H/2 + 20);
-      ctx.moveTo(NATIVE_W/2 + 20, NATIVE_H/2 + 20); ctx.lineTo(NATIVE_W/2 + 5, NATIVE_H/2 + 20);
-      ctx.moveTo(NATIVE_W/2, NATIVE_H/2); ctx.lineTo(NATIVE_W/2, NATIVE_H/2 + 15);
-      ctx.moveTo(NATIVE_W/2, NATIVE_H/2 + 40); ctx.lineTo(NATIVE_W/2, NATIVE_H/2 + 25);
+      ctx.moveTo(NATIVE_W/2 - 20, NATIVE_H/2); ctx.lineTo(NATIVE_W/2 - 5, NATIVE_H/2);
+      ctx.moveTo(NATIVE_W/2 + 20, NATIVE_H/2); ctx.lineTo(NATIVE_W/2 + 5, NATIVE_H/2);
+      ctx.moveTo(NATIVE_W/2, NATIVE_H/2 - 20); ctx.lineTo(NATIVE_W/2, NATIVE_H/2 - 5);
+      ctx.moveTo(NATIVE_W/2, NATIVE_H/2 + 20); ctx.lineTo(NATIVE_W/2, NATIVE_H/2 + 5);
       ctx.stroke();
 
       if (gs.enemies.length === 0 && gs.waveTimer > 0) {
-         // FIX: Check if gs.wave > 0 before printing "AREA SECURED"
          if (gs.wave > 0 && gs.waveTimer > 120) drawCRTText(ctx, "AREA SECURED", NATIVE_W/2, NATIVE_H/2 - 80, '#0f0', '50px "VT323", monospace');
-         
          if (gs.waveTimer < 100 && Math.floor(gs.waveTimer / 15) % 2 === 0) {
              drawCRTText(ctx, `WAVE ${gs.wave + 1} APPROACHING`, NATIVE_W/2, NATIVE_H/2 - 80, '#f00', '40px "VT323", monospace');
          }
