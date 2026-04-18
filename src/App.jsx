@@ -339,6 +339,79 @@ const drawCRTText = (ctx, text, x, y, color, font, align = 'center') => {
   ctx.shadowBlur = 0; 
   ctx.fillText(text, x, y);
 };
+
+// --- BOOT SEQUENCE COMPONENT ---
+const BootScreen = () => {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    let animationFrameId;
+    let tick = 0;
+
+    const bootLines = [
+      "BIOS DATE 04/17/82 14:32:01 VER 1.05",
+      "CPU: BASS-Z80A Processor at 3.58 MHz",
+      "Memory Test : 640K OK",
+      " ",
+      "Initializing I/O Ports... OK",
+      "Mounting /dev/sda1... OK",
+      "Loading BASS_OS.SYS...",
+      "0x00A1: FF 00 1A 2B 4C 8D  LD A, $FF",
+      "0x00A7: 21 00 80           LD HL, $8000",
+      "0x00AA: 77 23 10 FB        JR NZ, $00AA",
+      "Audio DSP Core... WAKING UP",
+      "Synthesizing Waveforms...",
+      "Caching PCM Buffers to VRAM...",
+      "Compiling Arpeggios...",
+      "System OK.",
+      "Awaiting Audio Context Ready..."
+    ];
+
+    let currentLines = [];
+
+    const draw = () => {
+      tick++;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Add a new line of faux code every 15 frames
+      if (tick % 15 === 0 && currentLines.length < bootLines.length) {
+        currentLines.push(bootLines[currentLines.length]);
+      }
+
+      // Draw the terminal text
+      ctx.textAlign = 'left';
+      currentLines.forEach((line, i) => {
+        drawCRTText(ctx, line, 40, 60 + (i * 30), '#0f0', '24px "VT323", monospace', 'left');
+      });
+
+      // Blinking cursor at the end of the last line
+      if (currentLines.length > 0 && Math.floor(tick / 20) % 2 === 0) {
+         let lastLine = currentLines[currentLines.length-1];
+         let textWidth = ctx.measureText(lastLine).width;
+         drawCRTText(ctx, "_", 40 + textWidth + 5, 60 + ((currentLines.length-1) * 30), '#0f0', '24px "VT323", monospace', 'left');
+      }
+    };
+
+    const loop = () => {
+      draw();
+      animationFrameId = requestAnimationFrame(loop);
+    };
+    loop();
+
+    return () => cancelAnimationFrame(animationFrameId);
+  }, []);
+
+  return (
+    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-auto bg-transparent">
+      <canvas ref={canvasRef} width={800} height={600} className="w-full h-full object-fill bg-transparent cursor-none" />
+    </div>
+  );
+};
+
 // --- MENU COMPONENT ---
 const GameMenu = ({ audioCtx, onSelect }) => {
   const canvasRef = useRef(null);
@@ -508,8 +581,12 @@ const GameMenu = ({ audioCtx, onSelect }) => {
 
       ctx.globalAlpha = 1.0; // Reset alpha for text
 
-      // --- FOREGROUND MENU UI ---
-      drawCRTText(ctx, "GAMES MENU", 400, 100, '#fff', '50px "VT323", monospace');
+// --- FOREGROUND MENU UI ---
+      // Drop the header in from the top
+      let headerY = Math.min(100, -50 + gs.tick * 4);
+      if (headerY > 0) {
+         drawCRTText(ctx, "GAMES MENU", 400, headerY, '#fff', '50px "VT323", monospace');
+      }
       
       const opts = [
           { text: "GALAXY FIGHTER", game: 'galaga' },
@@ -525,12 +602,24 @@ const GameMenu = ({ audioCtx, onSelect }) => {
       ];
 
       opts.forEach((opt, idx) => {
+          // Stagger the start time of each item cascading down the list
+          let delay = 20 + (idx * 5); 
+          if (gs.tick < delay) return; // Don't draw it yet!
+          
+          // Calculate the cubic ease-out slide animation
+          let progress = Math.min(1, (gs.tick - delay) / 15);
+          let ease = 1 - Math.pow(1 - progress, 3);
+          let xOffset = 400 - (1 - ease) * 500; // Slides in aggressively from the left
+
           let isSel = selectedIndex.current === idx;
           let col = isSel ? '#fff' : '#666';
           let font = isSel ? '40px "VT323", monospace' : '30px "VT323", monospace';
-          drawCRTText(ctx, opt.text, 400, 160 + (idx * 35), col, font);
+          
+          // Flash the item bright white while it is flying onto the screen
+          if (progress < 1) col = '#fff';
+
+          drawCRTText(ctx, opt.text, xOffset, 160 + (idx * 35), col, font);
       });
-    };
 
     const loop = () => {
       draw();
@@ -5357,21 +5446,33 @@ const handleReturnToMenu = useCallback(() => {
     window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'menuPlay' })); 
   }, []);
 
-  const handleStart = async () => {
+const handleStart = async () => {
     if (document.documentElement.requestFullscreen) {
       try { await document.documentElement.requestFullscreen(); } catch (err) {}
     }
     
+    // Instantly load the fake boot terminal
+    setGameState('booting');
+
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     audioContextRef.current = new AudioContext();
     
-    buildTracks(audioContextRef.current).then(bufs => {
-      bgmBuffersRef.current = bufs;
-      // ADDED: Boot up the menu music as soon as the buffers finish rendering!
-      window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'menuPlay' }));
-    });
+    const startTime = Date.now();
+    
+    // Build the massive audio tracks in the background while the boot screen runs!
+    const bufs = await buildTracks(audioContextRef.current);
+    bgmBuffersRef.current = bufs;
+    
+    const elapsed = Date.now() - startTime;
+    const minBootTime = 4000; // Force it to stay on the boot screen for at least 4 seconds
+    
+    // If the audio built too fast, pause here to let the boot animation finish
+    if (elapsed < minBootTime) {
+       await new Promise(resolve => setTimeout(resolve, minBootTime - elapsed));
+    }
 
     setGameState('menu');
+    window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'menuPlay' }));
   };
 
   const handleGameSelect = (game) => {
@@ -5503,6 +5604,8 @@ const handleReturnToMenu = useCallback(() => {
                 </button>
               </div>
             )}
+            {/* ADD THIS LINE HERE: */}
+            {gameState === 'booting' && <BootScreen />}
 
             {/* UPDATED: Added audioCtx={audioContextRef.current} */}
             {gameState === 'menu' && <GameMenu audioCtx={audioContextRef.current} onSelect={handleGameSelect} />}            
