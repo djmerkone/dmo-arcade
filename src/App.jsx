@@ -636,7 +636,7 @@ useEffect(() => {
       }
 
       ctx.globalAlpha = 1.0; // Reset alpha for text
-      
+
 // --- FOREGROUND MENU UI ---
       // Drop the header in from the top
       let headerY = Math.min(100, -50 + gs.tick * 4);
