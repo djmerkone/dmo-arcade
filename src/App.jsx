@@ -615,17 +615,17 @@ const GameMenu = ({ audioCtx, onSelect }) => {
           let col = isSel ? '#fff' : '#666';
           let font = isSel ? '40px "VT323", monospace' : '30px "VT323", monospace';
           
-          // Flash the item bright white while it is flying onto the screen
+// Flash the item bright white while it is flying onto the screen
           if (progress < 1) col = '#fff';
 
           drawCRTText(ctx, opt.text, xOffset, 160 + (idx * 35), col, font);
       });
+    }; // <--- ADD THIS MISSING BRACE HERE TO CLOSE THE DRAW FUNCTION
 
     const loop = () => {
       draw();
       animationFrameId = requestAnimationFrame(loop);
     };
-    loop();
 
     return () => cancelAnimationFrame(animationFrameId);
   }, []);
