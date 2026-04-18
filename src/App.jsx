@@ -622,10 +622,12 @@ const GameMenu = ({ audioCtx, onSelect }) => {
       });
     }; // <--- ADD THIS MISSING BRACE HERE TO CLOSE THE DRAW FUNCTION
 
-    const loop = () => {
+const loop = () => {
       draw();
       animationFrameId = requestAnimationFrame(loop);
     };
+    
+    loop(); // <--- FIX: ADD THIS LINE TO START THE ANIMATION!
 
     return () => cancelAnimationFrame(animationFrameId);
   }, []);
