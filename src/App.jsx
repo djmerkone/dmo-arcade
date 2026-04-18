@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import BattlezoneGame from './batzon';
+import Game1942 from './1942';
 
 // --- ASSET LOADER --- 
 const ASSETS = {
@@ -485,8 +486,8 @@ useEffect(() => {
           lastNavTime.current = now;
           playAudio('select');
           
-          // FIX: Added 'batzon' to the front of the array so the visual list perfectly matches the data list!
-          const games = ['batzon', 'galaga', 'commando', 'snake', 'asteroids', 'defender', 'oregon', 'invaders', '1941', 'robotron', 'controller'];
+          // ADD '1942' TO THE FRONT OF THIS LIST!
+          const games = ['1942', 'batzon', 'galaga', 'commando', 'snake', 'asteroids', 'defender', 'oregon', 'invaders', '1941_clone', 'robotron', 'controller'];
           setTimeout(() => onSelect(games[selectedIndex.current]), 200);
       }
     };
@@ -636,6 +637,7 @@ useEffect(() => {
       }
       
       const opts = [
+          { text: "1942 (ARCADE)", game: '1942' }, // <--- ADDED!
           { text: "BATTLE TANK ZONE", game: 'batzon' },
           { text: "GALAXY FIGHTER", game: 'galaga' },
           { text: "STATION COMMANDO", game: 'commando' },
@@ -5519,6 +5521,7 @@ const handleStart = async () => {
   const handleGameSelect = (game) => {
     setGameState(game);
     if (game === 'galaga') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'galagaStart' }));
+    else if (game === '1942') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
     else if (game === 'batzon') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
     else if (game === 'commando') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'commandoStart' }));
     else if (game === 'snake') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'snakeStart' }));
@@ -5650,7 +5653,8 @@ const handleStart = async () => {
             {gameState === 'booting' && <BootScreen />}
 
             {/* UPDATED: Added audioCtx={audioContextRef.current} */}
-            {gameState === 'menu' && <GameMenu audioCtx={audioContextRef.current} onSelect={handleGameSelect} />}            
+            {gameState === 'menu' && <GameMenu audioCtx={audioContextRef.current} onSelect={handleGameSelect} />}
+            {gameState === '1942' && <Game1942 audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}           
             {gameState === 'batzon' && <BattlezoneGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'galaga' && <GalagaGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />} 
             {gameState === 'commando' && <CommandoGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
