@@ -28,7 +28,8 @@ export default function RobotronGame({ audioCtx, onMenu }) {
 
     // Input Handling
     const keys = {};
-    const handleKeyDown = e => { 
+const handleKeyDown = e => { 
+        if (e.key === ' ') e.preventDefault(); // Stops the page from scrolling when you shoot!
         keys[e.key.toLowerCase()] = true; 
         if(e.key.toLowerCase() === 'm') onMenu();
         if(e.key === 'Enter') {
@@ -57,10 +58,14 @@ export default function RobotronGame({ audioCtx, onMenu }) {
             ctx.fillStyle = '#ff0000'; ctx.font = '60px "VT323"'; ctx.textAlign = 'center';
             ctx.fillText("ROBOTRON: 2084", engine.WIDTH/2, engine.HEIGHT/2 - 40);
             ctx.fillStyle = '#0f0'; ctx.font = '24px "VT323"';
-            ctx.fillText("WASD: MOVE  |  ARROWS: FIRE", engine.WIDTH/2, engine.HEIGHT/2 + 20);
+            
+            // UPDATED INSTRUCTIONS:
+            ctx.fillText("WASD/ARROWS: MOVE  |  SPACE: FIRE", engine.WIDTH/2, engine.HEIGHT/2 + 20);
+            
             ctx.fillStyle = '#fff';
             ctx.fillText("PRESS ENTER TO START", engine.WIDTH/2, engine.HEIGHT/2 + 70);
         } else {
+            
             // Draw Electrodes
             state.electrodes.forEach(el => {
                 ctx.drawImage(sprites.get('electrode'), el.x - 9, el.y - 9);

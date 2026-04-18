@@ -13,9 +13,10 @@ export class RobotronEngine {
     reset() {
         this.state = {
             status: 'start', tick: 0, score: 0, wave: 1, lives: 3, WIDTH: this.WIDTH, HEIGHT: this.HEIGHT,
-            player: { x: this.WIDTH/2, y: this.HEIGHT/2, speed: 4, cooldown: 0, invuln: 0 },
+            // ADDED: facingX and facingY to track where the player is looking
+            player: { x: this.WIDTH/2, y: this.HEIGHT/2, speed: 4, cooldown: 0, invuln: 0, facingX: 1, facingY: 0 },
             bullets: [], enemies: [], humans: [], particles: [], electrodes: [],
-            spawnParticles: (x, y, count, color, speed) => this.spawnParticles(x, y, count, color, speed) // Expose to Entities
+            spawnParticles: (x, y, count, color, speed) => this.spawnParticles(x, y, count, color, speed) 
         };
     }
 
@@ -33,25 +34,40 @@ export class RobotronEngine {
         const p = this.state.player;
         if (p.invuln > 0) p.invuln--;
 
-        // --- TWIN STICK MOVEMENT ---
+        // --- SINGLE STICK MOVEMENT (WASD or Arrows) ---
         let dx = 0; let dy = 0;
-        if (keys['w']) dy -= 1; if (keys['s']) dy += 1;
-        if (keys['a']) dx -= 1; if (keys['d']) dx += 1;
-        if (dx !== 0 && dy !== 0) { const mag = Math.hypot(dx, dy); dx /= mag; dy /= mag; } 
+        if (keys['w'] || keys['arrowup']) dy -= 1; 
+        if (keys['s'] || keys['arrowdown']) dy += 1;
+        if (keys['a'] || keys['arrowleft']) dx -= 1; 
+        if (keys['d'] || keys['arrowright']) dx += 1;
+
+        if (dx !== 0 || dy !== 0) { 
+            // Save the raw direction we are pressing so we know where to shoot
+            p.facingX = dx; 
+            p.facingY = dy;
+            
+            // Normalize for diagonal movement speed
+            const mag = Math.hypot(dx, dy); dx /= mag; dy /= mag; 
+        } 
+        
         p.x += dx * p.speed; p.y += dy * p.speed;
         p.x = Math.max(10, Math.min(this.WIDTH - 10, p.x));
         p.y = Math.max(10, Math.min(this.HEIGHT - 10, p.y));
 
-        // --- TWIN STICK FIRING ---
-        let shootX = 0; let shootY = 0;
-        if (keys['arrowup']) shootY -= 1; if (keys['arrowdown']) shootY += 1;
-        if (keys['arrowleft']) shootX -= 1; if (keys['arrowright']) shootX += 1;
-
+        // --- SINGLE BUTTON FIRING (Spacebar) ---
         if (p.cooldown > 0) p.cooldown--;
-        if ((shootX !== 0 || shootY !== 0) && p.cooldown <= 0) {
-            if (shootX !== 0 && shootY !== 0) { const mag = Math.hypot(shootX, shootY); shootX /= mag; shootY /= mag; }
+        if (keys[' '] && p.cooldown <= 0) {
+            // Grab our saved facing direction
+            let shootX = p.facingX; 
+            let shootY = p.facingY;
+            
+            // Normalize the bullet velocity
+            const mag = Math.hypot(shootX, shootY); 
+            if (mag > 0) { shootX /= mag; shootY /= mag; }
+
             this.state.bullets.push({ x: p.x, y: p.y, vx: shootX * 12, vy: shootY * 12, life: 40 });
-            p.cooldown = 6; this.playSound('shoot');
+            p.cooldown = 8; // Slightly slower cooldown for single-stick balance
+            this.playSound('shoot');
         }
 
         // --- BULLET LOGIC ---
@@ -69,15 +85,11 @@ export class RobotronEngine {
             }
         });
 
-        // --- ENEMY LOGIC (Delegated to Entities.js!) ---
+        // --- ENEMY LOGIC ---
         let activeGrunts = 0;
         this.state.enemies.forEach(e => {
             if (e.type === 'grunt') activeGrunts++;
-            
-            // Entity thinks for itself
             e.update(this.state);
-
-            // Player Collision
             if (p.invuln <= 0 && Math.hypot(p.x - e.x, p.y - e.y) < 12) this.triggerDeath();
         });
 
@@ -90,14 +102,13 @@ export class RobotronEngine {
             this.state.enemies.forEach(e => {
                 if (e.active && Math.hypot(b.x - e.x, b.y - e.y) < 16) {
                     b.life = 0;
-                    if (e.hp >= 9999) { // Indestructible Hulk
+                    if (e.hp >= 9999) { 
                         this.playSound('boom', true); this.spawnParticles(b.x, b.y, 5, '#0f0', 2);
                         let pushMag = Math.hypot(b.vx, b.vy); e.x += (b.vx/pushMag) * 5; e.y += (b.vy/pushMag) * 5;
                     } else {
                         e.hp--;
                         if (e.hp <= 0) {
                             e.active = false; this.state.score += e.pts; this.playSound('boom', false);
-                            // Color code explosions based on enemy type
                             let color = e.type === 'prog' ? '#f00' : (e.type === 'enforcer' ? '#0ff' : '#fa0');
                             this.spawnParticles(e.x, e.y, 25, color, 8);
                         }
@@ -118,7 +129,6 @@ export class RobotronEngine {
         this.state.particles.forEach(pt => { pt.x += pt.vx; pt.y += pt.vy; pt.vx *= 0.95; pt.vy *= 0.95; pt.life--; });
         this.state.particles = this.state.particles.filter(pt => pt.life > 0);
 
-        // Proceed to next wave if Grunts are dead!
         if (activeGrunts === 0 && this.state.status === 'playing') {
             this.state.wave++;
             this.startWave();
