@@ -487,7 +487,7 @@ useEffect(() => {
           playAudio('select');
           
           // ADD '1942' TO THE FRONT OF THIS LIST!
-          const games = ['1942', 'batzon', 'galaga', 'commando', 'snake', 'asteroids', 'defender', 'oregon', 'invaders', '1941_clone', 'robotron', 'controller'];
+          const games = ['1942', 'batzon', 'galaga', 'commando', 'snake', 'asteroids', 'defender', 'oregon', 'invaders', '1941', 'robotron', 'controller'];
           setTimeout(() => onSelect(games[selectedIndex.current]), 200);
       }
     };
