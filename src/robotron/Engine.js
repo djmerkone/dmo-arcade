@@ -137,15 +137,36 @@ export class RobotronEngine {
         return this.state;
     }
 
+// Add this inside the reset() function in Engine.js:
+    // this.state.flash = 0; 
+
     triggerDeath() {
-        this.spawnParticles(this.state.player.x, this.state.player.y, 50, '#fff', 10);
-        this.playSound('boom', true);
+        // OVERWHELMING SENSORY DEATH
+        this.spawnShockwave(this.state.player.x, this.state.player.y, '#ffffff', 5, 20);
+        this.spawnParticles(this.state.player.x, this.state.player.y, 80, '#ffffff', 15);
+        this.playSound('boom', false);
+        this.state.flash = 10; // Flash the screen bright red!
+        
         this.state.lives--;
         if (this.state.lives <= 0) this.state.status = 'gameover';
         else this.state.player.invuln = 90;
     }
 
     spawnParticles(x, y, count, color, speed) {
-        for(let i=0; i<count; i++) this.state.particles.push({ x, y, vx: (Math.random() - 0.5) * speed, vy: (Math.random() - 0.5) * speed, life: 20 + Math.random() * 30, color });
+        for(let i=0; i<count; i++) {
+            this.state.particles.push({ 
+                type: 'dot',
+                x, y, 
+                vx: (Math.random() - 0.5) * speed, vy: (Math.random() - 0.5) * speed, 
+                life: 20 + Math.random() * 30, color 
+            });
+        }
+        // Every normal particle burst also gets a small shockwave ring
+        this.state.particles.push({ type: 'shockwave', x, y, maxLife: 15, life: 15, speed: 2, color });
+    }
+
+    // ADD THIS NEW METHOD to Engine.js
+    spawnShockwave(x, y, color, speed, life) {
+        this.state.particles.push({ type: 'shockwave', x, y, maxLife: life, life: life, speed: speed, color });
     }
 }
