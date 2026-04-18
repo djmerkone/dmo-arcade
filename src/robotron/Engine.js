@@ -140,12 +140,14 @@ export class RobotronEngine {
 // Add this inside the reset() function in Engine.js:
     // this.state.flash = 0; 
 
-    triggerDeath() {
-        // OVERWHELMING SENSORY DEATH
+triggerDeath() {
         this.spawnShockwave(this.state.player.x, this.state.player.y, '#ffffff', 5, 20);
         this.spawnParticles(this.state.player.x, this.state.player.y, 80, '#ffffff', 15);
-        this.playSound('boom', e.type);
-        this.state.flash = 10; // Flash the screen bright red!
+        
+        // FIX: Route the death directly to your 'robotron_death.wav'
+        this.playSound('playerDeath'); 
+        
+        this.state.flash = 10; 
         
         this.state.lives--;
         if (this.state.lives <= 0) this.state.status = 'gameover';

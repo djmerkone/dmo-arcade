@@ -6,8 +6,6 @@ import { RobotronEngine } from './Engine';
 
 export default function RobotronGame({ audioCtx, onMenu }) {
   const canvasRef = useRef(null);
-  
-  // ADDED: Loading state to prevent the game from starting before assets arrive
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
@@ -19,10 +17,9 @@ export default function RobotronGame({ audioCtx, onMenu }) {
     const audio = new WilliamsAudio(audioCtx);
     const sprites = new RobotronSprites();
     
-    let engine;
+    let engine; // <--- THIS is the variable the loop uses
     let animationFrameId;
 
-    // --- ASYNC BOOT LOADER ---
     const bootGame = async () => {
         try {
             await Promise.all([
@@ -30,17 +27,18 @@ export default function RobotronGame({ audioCtx, onMenu }) {
                 audio.loadAssets()
             ]);
             
-const engine = new RobotronEngine((actionType, enemyType) => {
-        if (actionType === 'shoot') audio.playShoot();
-        if (actionType === 'boom') audio.playExplosion(enemyType); // Passes 'grunt', 'brain', 'hulk', etc.
-        if (actionType === 'rescue') audio.playHumanRescue();
-        if (actionType === 'humanKilled') audio.playHumanKilled();
-        if (actionType === 'playerDeath') audio.playPlayerDeath();
-        if (actionType === 'spawn') audio.playSpawnMaterialize();
-    });
+            // FIX: Removed "const" so it links to the 'let engine' variable above!
+            engine = new RobotronEngine((actionType, enemyType) => {
+                if (actionType === 'shoot') audio.playShoot();
+                if (actionType === 'boom') audio.playExplosion(enemyType); 
+                if (actionType === 'rescue') audio.playHumanRescue();
+                if (actionType === 'humanKilled') audio.playHumanKilled();
+                if (actionType === 'playerDeath') audio.playPlayerDeath();
+                if (actionType === 'spawn') audio.playSpawnMaterialize();
+            });
 
             setIsReady(true);
-            loop(); // Start the loop ONLY after loading is done
+            loop(); 
         } catch (err) {
             console.error("Failed to boot Robotron ROMs", err);
         }
@@ -48,7 +46,6 @@ const engine = new RobotronEngine((actionType, enemyType) => {
     
     bootGame();
 
-    // Input Handling
     const keys = {};
     const handleKeyDown = e => { 
         if (!isReady || !engine) return;
@@ -67,7 +64,6 @@ const engine = new RobotronEngine((actionType, enemyType) => {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    // The Master Loop
     const loop = () => {
         if (!engine) return;
         const state = engine.update(keys);
@@ -90,7 +86,6 @@ const engine = new RobotronEngine((actionType, enemyType) => {
             ctx.fillText("PRESS ENTER TO START", engine.WIDTH/2, engine.HEIGHT/2 + 70);
         } else {
             
-            // USING THE NEW SPRITESHEET RENDERER
             state.electrodes.forEach(el => sprites.draw(ctx, 'electrode', el.x, el.y, state.tick));
             state.humans.forEach(h => sprites.draw(ctx, 'human', h.x, h.y, state.tick));
             
@@ -102,7 +97,6 @@ const engine = new RobotronEngine((actionType, enemyType) => {
                 ctx.globalAlpha = 1.0;
             });
 
-            // Draw Bullets using the sprite sheet or keep them as neon tracers
             ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 4;
             ctx.lineCap = 'round';
             ctx.beginPath();
@@ -112,14 +106,12 @@ const engine = new RobotronEngine((actionType, enemyType) => {
             });
             ctx.stroke();
 
-            // Draw Player
             if (state.status === 'playing') {
                 if (state.player.invuln <= 0 || Math.floor(state.tick / 3) % 2 === 0) {
                     sprites.draw(ctx, 'player', state.player.x, state.player.y, state.tick);
                 }
             }
 
-            // Spectactular Particle System
             state.particles.forEach(p => {
                 ctx.globalAlpha = Math.max(0, p.life / (p.maxLife || 50));
                 if (p.type === 'shockwave') {
@@ -134,7 +126,6 @@ const engine = new RobotronEngine((actionType, enemyType) => {
             });
             ctx.globalAlpha = 1.0;
 
-            // Draw HUD
             ctx.fillStyle = '#ff0000'; ctx.font = '22px "VT323"'; ctx.textAlign = 'left';
             ctx.fillText(`SCORE: ${state.score}`, 10, 25);
             ctx.textAlign = 'center'; ctx.fillStyle = '#00ffff';
@@ -163,7 +154,6 @@ const engine = new RobotronEngine((actionType, enemyType) => {
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-auto bg-black p-4">
-      {/* Show a loading screen while files are fetched */}
       {!isReady && (
          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black bg-opacity-90">
              <h2 className="text-[#0f0] text-3xl font-['VT323'] blink-text">LOADING ROM ASSETS...</h2>
