@@ -5597,7 +5597,7 @@ const handleStart = async () => {
             {/* --- MOVED INITIALIZATION SCREEN --- */}
             {gameState === 'off' && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-transparent p-4 text-center pointer-events-auto">
-                <h1 className="vcr-font text-[#0f0] text-4xl md:text-6xl mb-8 blink-text">CLICK THE BOTTON TO BEGIN</h1>
+                <h1 className="vcr-font text-[#0f0] text-4xl md:text-6xl mb-8 blink-text">CLICK THE BUTTON TO BEGIN</h1>
                 <button 
                   onClick={handleStart}
                   className="vcr-font text-2xl md:text-4xl px-6 py-3 border-4 border-[#0f0] text-[#0f0] hover:bg-[#0f0] hover:text-black transition-colors duration-200 uppercase cursor-pointer"
