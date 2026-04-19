@@ -4838,18 +4838,18 @@ const InvadersGame = ({ audioCtx, onMenu }) => {
     shields: [],
     ufo: { active: false, x: 0, y: 50, dx: 0, timer: 1000 },
     particles: [],
-    stars: Array(120).fill().map(() => {
+stars: Array(120).fill().map(() => {
       const isColored = Math.random() < 0.25; 
-      const colors = ['rgba(0, 255, 255, 0.6)', 'rgba(255, 0, 255, 0.6)', 'rgba(255, 255, 0, 0.6)', 'rgba(255, 0, 0, 0.6)', 'rgba(0, 255, 0, 0.6)'];
+      // Lowered opacity from 0.6 to 0.25 so they fade into the deep background
+      const colors = ['rgba(0, 255, 255, 0.25)', 'rgba(255, 0, 255, 0.25)', 'rgba(255, 255, 0, 0.25)', 'rgba(255, 0, 0, 0.25)', 'rgba(0, 255, 0, 0.25)'];
       return { 
         x: Math.random() * 800, y: Math.random() * 600, 
         speed: (2 + Math.random() * 5) * 0.75, 
-        color: isColored ? colors[Math.floor(Math.random() * colors.length)] : '#ffffff',
+        // Replaced solid '#ffffff' with a dim, transparent white
+        color: isColored ? colors[Math.floor(Math.random() * colors.length)] : 'rgba(255, 255, 255, 0.3)',
         twinkleTimer: Math.random() * 100
       };
     }),
-    keys: {}
-  });
 
   // Pixel Art Dictionaries
   const SHIP_SPRITE = [
@@ -5086,11 +5086,20 @@ const InvadersGame = ({ audioCtx, onMenu }) => {
       let pulse = Math.abs(Math.sin(Date.now() * 0.05)) * 4;
       gs.bullets.forEach(b => ctx.fillRect(b.x - pulse/2, b.y, 6 + pulse, 35));
 
-      // Draw Enemy Bullets
-      ctx.fillStyle = '#fff';
+// Draw Enemy Bullets (Now Bigger, Red, and Menacing!)
       gs.enemyBullets.forEach(eb => {
-        ctx.fillRect(eb.x, eb.y, 4, 12);
-        if (Math.floor(Date.now() / 50) % 2 === 0) { ctx.fillStyle = '#ff0'; ctx.fillRect(eb.x-2, eb.y+4, 8, 4); ctx.fillStyle='#fff';}
+        // Main bullet body (Thick Red)
+        ctx.fillStyle = '#ff0000';
+        ctx.fillRect(eb.x - 1, eb.y, 6, 16); 
+        
+        // Pulsing hot-orange/yellow core
+        if (Math.floor(Date.now() / 50) % 2 === 0) { 
+            ctx.fillStyle = '#ffaa00'; 
+            ctx.fillRect(eb.x - 3, eb.y + 4, 10, 6); 
+        } else {
+            ctx.fillStyle = '#ffff00';
+            ctx.fillRect(eb.x, eb.y + 4, 4, 8); 
+        }
       });
 
       // Draw Particles
