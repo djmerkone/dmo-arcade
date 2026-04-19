@@ -1,6 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { ArcadeMenuMusic } from './menumusic';
 import NewRobotronGame from './robotron/index';
 import BattlezoneGame from './batzon';
+import PongGame from './Pong';
+import MazeGame from './Maze';
+import TankGame from './Tank';
+
 // import Game1942 from './1942/index';   <-- ADD // HERE
 // (or import AirplaneGame from './1941/index'; depending on how you named it)
 
@@ -26,26 +31,7 @@ const buildTracks = async (actx) => {
     nSrc.connect(nFilter).connect(nGain).connect(dest); nSrc.start(time); nSrc.stop(time + 0.15);
   };
   
-  // ---------------- MENU TRACK ----------------
-  const m1 = new WAudioContext(1, 16 * sr, sr);
-  for(let beat=0; beat<64; beat++) {
-    let t = beat * 0.25;
-    let osc = m1.createOscillator(); osc.type = 'square';
-    let notes = [220, 261.63, 329.63, 392.00, 440, 392.00, 329.63, 261.63];
-    osc.frequency.value = notes[beat % 8];
-    // Gentle, plucky synthwave arpeggio
-    let gain = m1.createGain(); gain.gain.setValueAtTime(0.03, t); gain.gain.exponentialRampToValueAtTime(0.001, t+0.2);
-    
-    // Add a lush, low bass pad underneath
-    if (beat % 16 === 0) {
-        let pad = m1.createOscillator(); pad.type = 'sine'; pad.frequency.value = 110;
-        let padGain = m1.createGain(); padGain.gain.setValueAtTime(0.05, t); padGain.gain.linearRampToValueAtTime(0.01, t+4.0);
-        pad.connect(padGain).connect(m1.destination); pad.start(t); pad.stop(t+4.0);
-    }
-    
-    osc.connect(gain).connect(m1.destination); osc.start(t); osc.stop(t+0.2);
-  }
-  const menuPlayBuf = await m1.startRendering();
+
 
   // ---------------- GALAGA TRACKS ----------------
   const o1 = new WAudioContext(1, 8 * sr, sr);
@@ -234,8 +220,7 @@ return {
     galagaStart: galagaStartBuf, galagaPlay: galagaPlayBuf, galagaWarp: galagaWarpBuf, galagaOver: galagaOverBuf,
     commandoStart: commandoStartBuf, commandoPlay: commandoPlayBuf, commandoOver: commandoOverBuf,
     snakeStart: snakeStartBuf, snakePlay: snakePlayBuf, snakeOver: snakeOverBuf, 
-    '1941Start': start1941Buf, '1941Play': play1941Buf, '1941Over': over1941Buf,
-    menuPlay: menuPlayBuf
+    '1941Start': start1941Buf, '1941Play': play1941Buf, '1941Over': over1941Buf
   };
 };
 
@@ -440,13 +425,42 @@ const GameMenu = ({ audioCtx, onSelect }) => {
   const selectedIndex = useRef(0);
   const lastNavTime = useRef(0); 
 
-  // Particle Engine State for Backgrounds
+  // --- MENU MUSIC ENGINE ---
+  useEffect(() => {
+      if (!audioCtx) return;
+      const bgMusic = new ArcadeMenuMusic(audioCtx);
+      bgMusic.start();
+      return () => bgMusic.stop();
+  }, [audioCtx]);
+
+  // NEW: Added Pong and Maze to the top of the menu!
+  const MENU_OPTIONS = [
+      { text: "CLASSIC PONG", game: 'Pong', isNew: true },
+      { text: "MAZE WAR: EVOLVED", game: 'maze', isNew: true },
+      { text: "BASS TANK (Beta)", game: 'tank', isNew: true },
+      { text: "BATTLE TANK ZONE", game: 'batzon' },
+      { text: "GALAXY FIGHTER", game: 'galaga' },
+      { text: "STATION COMMANDO", game: 'commando' },
+      { text: "CLASSIC SNAKEZ", game: 'snake' },
+      { text: "SPACE ASTEROIDZ", game: 'asteroids' },
+      { text: "SPACE DEFENDAZ", game: 'defender' },
+      { text: "COUNTRY TRAIL", game: 'oregon' },
+      { text: "SPACE INVADAZ", game: 'invaders' },
+      { text: "FLY FIGHT 1941", game: '1941' },
+      { text: "BADASSATRON 2084", game: 'robotron' },
+      { text: "- CONTROLLER SETUP -", game: 'controller' }
+  ];
+
   const bgState = useRef({
     tick: 0,
     stars: Array(150).fill().map(() => ({ x: Math.random() * 800, y: Math.random() * 600, speed: 1 + Math.random() * 3, size: Math.random() > 0.5 ? 2 : 1 })),
     missiles: Array(10).fill().map(() => ({ x: Math.random() * 800, y: Math.random() * 600, speed: 4 + Math.random() * 4 })),
     asteroids: Array(6).fill().map(() => ({ x: Math.random() * 800, y: Math.random() * 600, vx: (Math.random()-0.5)*2, vy: (Math.random()-0.5)*2, rot: 0, rotSpeed: (Math.random()-0.5)*0.05, pts: Array(8).fill().map(()=> 20+Math.random()*20) })),
-    controllers: Array(4).fill().map((_, i) => ({ x: Math.random() * 800, y: 150 + i * 100, vx: 1 + Math.random(), rot: Math.random()*Math.PI, rs: (Math.random()-0.5)*0.05 }))
+    controllers: Array(4).fill().map((_, i) => ({ x: Math.random() * 800, y: 150 + i * 100, vx: 1 + Math.random(), rot: Math.random()*Math.PI, rs: (Math.random()-0.5)*0.05 })),
+    tanks: [
+        { x: 200, y: 500, angle: -Math.PI/4, speed: 1, color: '#0f0', rotDir: 0.02 },
+        { x: 600, y: 100, angle: Math.PI * 0.75, speed: 1, color: '#f0f', rotDir: -0.02 }
+    ]
   });
 
   const playAudio = (type) => {
@@ -466,31 +480,26 @@ const GameMenu = ({ audioCtx, onSelect }) => {
     }
   };
 
-useEffect(() => {
+  useEffect(() => {
     const handleKeyDown = e => {
       const now = Date.now();
       if (e.key === 'ArrowUp' || e.key === 'w') {
           if (now - lastNavTime.current < 150) return; 
           lastNavTime.current = now;
-          // FIX: Changed to 11 to account for the new game!
-          selectedIndex.current = (selectedIndex.current - 1 + 11) % 11; 
+          selectedIndex.current = (selectedIndex.current - 1 + MENU_OPTIONS.length) % MENU_OPTIONS.length; 
           playAudio('scroll');
       }
       if (e.key === 'ArrowDown' || e.key === 's') {
           if (now - lastNavTime.current < 150) return; 
           lastNavTime.current = now;
-          // FIX: Changed to 11 to account for the new game!
-          selectedIndex.current = (selectedIndex.current + 1) % 11; 
+          selectedIndex.current = (selectedIndex.current + 1) % MENU_OPTIONS.length; 
           playAudio('scroll');
       }
       if (e.key === 'Enter') {
           if (now - lastNavTime.current < 200) return; 
           lastNavTime.current = now;
           playAudio('select');
-          
-          
-const games = ['batzon', 'galaga', 'commando', 'snake', 'asteroids', 'defender', 'oregon', 'invaders', '1941', 'robotron', 'controller'];
-          setTimeout(() => onSelect(games[selectedIndex.current]), 200);
+          setTimeout(() => onSelect(MENU_OPTIONS[selectedIndex.current].game), 200);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -507,7 +516,7 @@ const games = ['batzon', 'galaga', 'commando', 'snake', 'asteroids', 'defender',
         ctx.beginPath(); ctx.arc(x+35, y-5, 18, Math.PI, 0); ctx.fill();
         ctx.fillRect(x+17, y-15, 36, 10);
         ctx.fillStyle = '#a52'; ctx.fillRect(x+17, y-5, 36, 12);
-        ctx.fillStyle = '#fff'; ctx.fillRect(x+75, y-5, 20, 14); // oxen
+        ctx.fillStyle = '#fff'; ctx.fillRect(x+75, y-5, 20, 14); 
         ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(x+25, y+5, 6, 0, Math.PI*2); ctx.fill();
         ctx.beginPath(); ctx.arc(x+45, y+5, 6, 0, Math.PI*2); ctx.fill();
     };
@@ -529,56 +538,117 @@ const games = ['batzon', 'galaga', 'commando', 'snake', 'asteroids', 'defender',
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-// --- DYNAMIC BACKGROUND ENGINE ---
-      ctx.globalAlpha = 0.2; // Dim the background
+      ctx.globalAlpha = 0.2; 
       let sel = selectedIndex.current;
 
-      if (sel === 0) { // BATTLE TANK ZONE (Vector Grid)
+      if (MENU_OPTIONS[sel].game === 'Pong') { 
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'; ctx.lineWidth = 4;
+        ctx.setLineDash([15, 20]);
+        ctx.beginPath(); ctx.moveTo(400, 0); ctx.lineTo(400, 600); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#fff';
+        let py1 = 300 + Math.sin(gs.tick * 0.05) * 120;
+        let py2 = 300 + Math.cos(gs.tick * 0.04) * 120;
+        ctx.fillRect(40, py1 - 40, 15, 80); ctx.fillRect(745, py2 - 40, 15, 80);
+        let bx = 400 + Math.sin(gs.tick * 0.08) * 300; let by = 300 + Math.cos(gs.tick * 0.11) * 200;
+        ctx.fillRect(bx - 7, by - 7, 15, 15);
+      } else if (MENU_OPTIONS[sel].game === 'maze') {
+        ctx.strokeStyle = '#0f0'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, 0); ctx.lineTo(300, 200); ctx.lineTo(300, 400); ctx.lineTo(0, 600);
+        ctx.moveTo(800, 0); ctx.lineTo(500, 200); ctx.lineTo(500, 400); ctx.lineTo(800, 600);
+        ctx.moveTo(300, 200); ctx.lineTo(500, 200); ctx.moveTo(300, 400); ctx.lineTo(500, 400);
+        let z = (gs.tick * 2) % 100; let p = z / 100; 
+        let insetX = 300 * p; let insetY = 200 * p;
+        ctx.moveTo(insetX, insetY); ctx.lineTo(800 - insetX, insetY);
+        ctx.moveTo(insetX, 600 - insetY); ctx.lineTo(800 - insetX, 600 - insetY);
+        ctx.moveTo(insetX, insetY); ctx.lineTo(insetX, 600 - insetY);
+        ctx.moveTo(800 - insetX, insetY); ctx.lineTo(800 - insetX, 600 - insetY);
+        ctx.stroke();
+        let ex = 400 + Math.sin(gs.tick * 0.04) * 80; let ey = 300 + Math.cos(gs.tick * 0.05) * 40;
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ex, ey, 25, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#f00'; ctx.beginPath(); ctx.arc(ex + Math.sin(gs.tick * 0.08)*8, ey + Math.cos(gs.tick * 0.08)*8, 8, 0, Math.PI * 2); ctx.fill();
+        } else if (MENU_OPTIONS[sel].game === 'tank') {
+        // Draw some subtle grid lines
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for(let i=0; i<800; i+=50) { ctx.moveTo(i, 0); ctx.lineTo(i, 600); }
+        for(let i=0; i<600; i+=50) { ctx.moveTo(0, i); ctx.lineTo(800, i); }
+        ctx.stroke();
+
+        // Animate and draw background tanks
+        gs.tanks.forEach(t => {
+            // Very basic wandering logic
+            if (Math.random() < 0.02) t.rotDir = (Math.random() - 0.5) * 0.05;
+            t.angle += t.rotDir;
+            t.x += Math.cos(t.angle) * t.speed;
+            t.y += Math.sin(t.angle) * t.speed;
+            
+            // Wrap around screen
+            if (t.x < -50) t.x = 850; if (t.x > 850) t.x = -50;
+            if (t.y < -50) t.y = 650; if (t.y > 650) t.y = -50;
+
+            // Draw Tank
+            ctx.save();
+            ctx.translate(t.x, t.y);
+            ctx.rotate(t.angle);
+            
+            // Treads
+            ctx.fillStyle = '#333';
+            ctx.fillRect(-14, -14, 28, 6);
+            ctx.fillRect(-14, 8, 28, 6);
+            
+            // Body
+            ctx.fillStyle = t.color;
+            ctx.fillRect(-10, -10, 20, 20);
+            
+            // Barrel
+            ctx.fillRect(0, -2, 18, 4);
+            
+            // Fake bullets shooting
+            if (Math.floor(gs.tick / 10) % 10 === 0) {
+               ctx.fillStyle = '#fff';
+               ctx.fillRect(30 + (gs.tick % 20)*5, -2, 4, 4);
+            }
+            
+            ctx.restore();
+        });
+      } else if (MENU_OPTIONS[sel].game === 'batzon') { 
         ctx.strokeStyle = 'rgba(0, 255, 0, 0.6)'; ctx.lineWidth = 2;
         ctx.beginPath();
-        // Horizon line
         ctx.moveTo(0, 300); ctx.lineTo(800, 300);
-        // Vertical vanishing lines
-        for (let i = -10; i <= 10; i++) {
-           ctx.moveTo(400, 300); ctx.lineTo(400 + (i * 200), 600);
-        }
-        // Horizontal scrolling depth lines
+        for (let i = -10; i <= 10; i++) { ctx.moveTo(400, 300); ctx.lineTo(400 + (i * 200), 600); }
         for (let i = 0; i < 10; i++) {
            let progress = ((gs.tick * 0.02) + (i * 0.1)) % 1.0;
            let y = 300 + (progress * progress) * 300; 
            ctx.moveTo(0, y); ctx.lineTo(800, y);
         }
         ctx.stroke();
-        
-        // Floating wireframe pyramid
         ctx.strokeStyle = '#0f0';
-        let px = 600 + Math.sin(gs.tick * 0.05) * 50;
-        let py = 200 + Math.cos(gs.tick * 0.03) * 20;
+        let px = 600 + Math.sin(gs.tick * 0.05) * 50; let py = 200 + Math.cos(gs.tick * 0.03) * 20;
         ctx.beginPath();
         ctx.moveTo(px, py - 40); ctx.lineTo(px - 30, py + 20); ctx.lineTo(px + 30, py + 20); ctx.closePath();
         ctx.moveTo(px, py - 40); ctx.lineTo(px + 10, py + 10); ctx.lineTo(px - 30, py + 20);
         ctx.stroke();
-      } else if (sel === 1) { // GALAXY FIGHTER
+      } else if (MENU_OPTIONS[sel].game === 'galaga') { 
         ctx.fillStyle = '#fff';
         gs.stars.forEach(s => {
            s.y += s.speed; if(s.y > 600) s.y = -10;
            ctx.fillRect(s.x, s.y, s.size, s.size + s.speed);
         });
-      } else if (sel === 2) { // STATION COMMANDO
+      } else if (MENU_OPTIONS[sel].game === 'commando') { 
         ctx.strokeStyle = '#f0f'; ctx.lineWidth = 2;
         gs.missiles.forEach(m => {
            m.y += m.speed;
            ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x, m.y - 20); ctx.stroke();
            if(m.y > 600) { m.y = -50; m.x = Math.random()*800; }
         });
-      } else if (sel === 3) { // CLASSIC SNAKEZ
+      } else if (MENU_OPTIONS[sel].game === 'snake') { 
         ctx.fillStyle = '#0f0';
-        let sx = 400 + Math.sin(gs.tick * 0.05) * 150;
-        let sy = 300 + Math.cos(gs.tick * 0.05) * 150;
-        ctx.fillRect(sx, sy, 30, 30);
-        ctx.fillRect(sx - 35, sy, 30, 30);
-        ctx.fillRect(sx - 70, sy, 30, 30);
-      } else if (sel === 4) { // SPACE ASTEROIDZ
+        let sx = 400 + Math.sin(gs.tick * 0.05) * 150; let sy = 300 + Math.cos(gs.tick * 0.05) * 150;
+        ctx.fillRect(sx, sy, 30, 30); ctx.fillRect(sx - 35, sy, 30, 30); ctx.fillRect(sx - 70, sy, 30, 30);
+      } else if (MENU_OPTIONS[sel].game === 'asteroids') { 
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
         gs.asteroids.forEach(a => {
           a.x += a.vx; a.y += a.vy; a.rot += a.rotSpeed;
@@ -592,36 +662,31 @@ const games = ['batzon', 'galaga', 'commando', 'snake', 'asteroids', 'defender',
           });
           ctx.closePath(); ctx.stroke(); ctx.restore();
         });
-      } else if (sel === 5) { // SPACE DEFENDAZ
-        ctx.strokeStyle = '#a52'; ctx.lineWidth = 4;
-        ctx.beginPath();
+      } else if (MENU_OPTIONS[sel].game === 'defender') { 
+        ctx.strokeStyle = '#a52'; ctx.lineWidth = 4; ctx.beginPath();
         let dx = (gs.tick * 4) % 100;
         for(let i=-1; i<10; i++) {
            let rx = i*100 - dx; let ry = 400 + Math.sin((i + Math.floor(gs.tick/25)) * 0.8) * 80;
            if(i===-1) ctx.moveTo(rx, ry); else ctx.lineTo(rx, ry);
         }
         ctx.stroke();
-      } else if (sel === 6) { // COUNTRY TRAIL
+      } else if (MENU_OPTIONS[sel].game === 'oregon') { 
         ctx.fillStyle = '#852'; ctx.fillRect(0, 450, 800, 150);
-        let wx = (gs.tick * 1.5) % 1000 - 150;
-        drawWagon(wx, 440);
-      } else if (sel === 7) { // SPACE INVADAZ
+        let wx = (gs.tick * 1.5) % 1000 - 150; drawWagon(wx, 440);
+      } else if (MENU_OPTIONS[sel].game === 'invaders') { 
         ctx.fillStyle = '#0ff';
-        let ix = 350 + Math.sin(gs.tick * 0.03) * 250;
-        let iy = 250 + Math.sin(gs.tick * 0.15) * 30; 
+        let ix = 350 + Math.sin(gs.tick * 0.03) * 250; let iy = 250 + Math.sin(gs.tick * 0.15) * 30; 
         ctx.fillRect(ix, iy, 60, 40); ctx.fillRect(ix+10, iy-20, 40, 20);
-      } else if (sel === 8) { // FLY FIGHT 1941
+      } else if (MENU_OPTIONS[sel].game === '1941') { 
         ctx.fillStyle = '#001a44'; ctx.fillRect(0,0,800,600);
         ctx.fillStyle = '#004400';
         let dy = (gs.tick * 2) % 900 - 150;
         ctx.beginPath(); ctx.arc(200, dy, 120, 0, Math.PI*2); ctx.fill();
         ctx.beginPath(); ctx.arc(600, dy - 300, 100, 0, Math.PI*2); ctx.fill();
-      } else if (sel === 9) { // BADASSATRON 2084
-        ctx.strokeStyle = `hsl(${(gs.tick * 5) % 360}, 100%, 50%)`;
-        ctx.lineWidth = 6;
-        let sz = (gs.tick * 6) % 800;
-        ctx.strokeRect(400 - sz/2, 300 - sz/2, sz, sz);
-      } else if (sel === 10) { // CONTROLLER SETUP
+      } else if (MENU_OPTIONS[sel].game === 'robotron') { 
+        ctx.strokeStyle = `hsl(${(gs.tick * 5) % 360}, 100%, 50%)`; ctx.lineWidth = 6;
+        let sz = (gs.tick * 6) % 800; ctx.strokeRect(400 - sz/2, 300 - sz/2, sz, sz);
+      } else if (MENU_OPTIONS[sel].game === 'controller') { 
         gs.controllers.forEach(c => {
            c.x += c.vx; c.rot += c.rs;
            if(c.x > 900) c.x = -100;
@@ -629,57 +694,50 @@ const games = ['batzon', 'galaga', 'commando', 'snake', 'asteroids', 'defender',
         });
       }
 
-      ctx.globalAlpha = 1.0; // Reset alpha for text
+      ctx.globalAlpha = 1.0; 
 
-// --- FOREGROUND MENU UI ---
-      // Drop the header in from the top
-      let headerY = Math.min(100, -50 + gs.tick * 4);
+      // --- FOREGROUND MENU UI (SLIDING WINDOW LOGIC) ---
+      let headerY = Math.min(90, -50 + gs.tick * 4);
       if (headerY > 0) {
-         drawCRTText(ctx, "GAMES MENU", 400, headerY, '#fff', '50px "VT323", monospace');
+         drawCRTText(ctx, "ARCADE SYSTEM OS", 400, headerY, '#0ff', '70px "VT323", monospace');
       }
       
-      const opts = [
-          { text: "BATTLE TANK ZONE", game: 'batzon' },
-          { text: "GALAXY FIGHTER", game: 'galaga' },
-          { text: "STATION COMMANDO", game: 'commando' },
-          { text: "CLASSIC SNAKEZ", game: 'snake' },
-          { text: "SPACE ASTEROIDZ", game: 'asteroids' },
-          { text: "SPACE DEFENDAZ", game: 'defender' },
-          { text: "COUNTRY TRAIL", game: 'oregon' },
-          { text: "SPACE INVADAZ", game: 'invaders' },
-          { text: "FLY FIGHT 1941", game: '1941' },
-          { text: "BADASSATRON 2084", game: 'robotron' },
-          { text: "- CONTROLLER SETUP -", game: 'controller' }
-      ];
+      let startIdx = Math.max(0, Math.min(sel - 1, MENU_OPTIONS.length - 3));
 
-      opts.forEach((opt, idx) => {
-          // Stagger the start time of each item cascading down the list
-          let delay = 20 + (idx * 5); 
-          if (gs.tick < delay) return; // Don't draw it yet!
+      if (startIdx > 0) {
+          let arrowColor = (Math.floor(gs.tick / 15) % 2 === 0) ? '#ff0' : '#880';
+          drawCRTText(ctx, "▲", 400, 170, arrowColor, '40px "VT323", monospace');
+      }
+
+// Draw the 3 visible options
+for (let i = 0; i < 3; i++) {
+          let optIdx = startIdx + i;
+          if (optIdx >= MENU_OPTIONS.length) break;
+          let isSel = (optIdx === sel);
+          let col = isSel ? '#fff' : '#444';
+          let font = isSel ? '55px "VT323", monospace' : '35px "VT323", monospace';
+          let yOffset = 250 + (i * 90); 
+          let displayText = isSel ? `> ${MENU_OPTIONS[optIdx].text} <` : MENU_OPTIONS[optIdx].text;
           
-          // Calculate the cubic ease-out slide animation
-          let progress = Math.min(1, (gs.tick - delay) / 15);
-          let ease = 1 - Math.pow(1 - progress, 3);
-          let xOffset = 400 - (1 - ease) * 500; // Slides in aggressively from the left
-
-          let isSel = selectedIndex.current === idx;
-          let col = isSel ? '#fff' : '#666';
-          let font = isSel ? '40px "VT323", monospace' : '30px "VT323", monospace';
+          if (isSel && gs.tick < 30 && Math.floor(gs.tick / 4) % 2 === 0) col = '#0f0';
           
-// Flash the item bright white while it is flying onto the screen
-          if (progress < 1) col = '#fff';
+          // Render the "NEW" text directly above the title if flagged
+          if (MENU_OPTIONS[optIdx].isNew) {
+              // Push it slightly higher if the main text is currently enlarged (selected)
+              let newLabelYOffset = isSel ? yOffset - 35 : yOffset - 25;
+              drawCRTText(ctx, "NEWLY ADDED TITLE", 400, newLabelYOffset, '#f00', '20px "VT323", monospace');
+          }
 
-          drawCRTText(ctx, opt.text, xOffset, 160 + (idx * 35), col, font);
-      });
-    }; // <--- ADD THIS MISSING BRACE HERE TO CLOSE THE DRAW FUNCTION
+          // Draw the main game title
+          drawCRTText(ctx, displayText, 400, yOffset, col, font);
+      }
+    }; 
 
-const loop = () => {
+    const loop = () => {
       draw();
       animationFrameId = requestAnimationFrame(loop);
     };
-    
-    loop(); // <--- FIX: ADD THIS LINE TO START THE ANIMATION!
-
+    loop(); 
     return () => cancelAnimationFrame(animationFrameId);
   }, []);
 
@@ -5493,44 +5551,39 @@ export default function App() {
     return () => window.removeEventListener('bgmTrack', handleBgm);
   }, []);
 
-const handleReturnToMenu = useCallback(() => {
+  const handleReturnToMenu = useCallback(() => {
     setGameState('menu');
-    // ADDED: Resume menu music when exiting a game
-    window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'menuPlay' })); 
+    window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' })); 
   }, []);
 
-const handleStart = async () => {
+  const handleStart = async () => {
     if (document.documentElement.requestFullscreen) {
       try { await document.documentElement.requestFullscreen(); } catch (err) {}
     }
     
-    // Instantly load the fake boot terminal
     setGameState('booting');
 
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     audioContextRef.current = new AudioContext();
+    if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+    }
     
-    // Build the massive audio tracks in the background while the boot screen runs!
     const bufs = await buildTracks(audioContextRef.current);
     bgmBuffersRef.current = bufs;
     
-    // Audio is ready! Skip any wait times and violently cut to the menu!
     setGameState('menu');
-    window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'menuPlay' }));
+    window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
   };
 
   const handleGameSelect = (game) => {
     setGameState(game);
     if (game === 'galaga') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'galagaStart' }));
-    else if (game === 'batzon') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
     else if (game === 'commando') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'commandoStart' }));
     else if (game === 'snake') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'snakeStart' }));
-    else if (game === 'asteroids') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' })); // Asteroids handles its own audio
-    else if (game === 'defender') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' })); // Defender handles its own audio
-    else if (game === 'oregon') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
-    else if (game === 'invaders') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
     else if (game === '1941') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Start' }));
-    else if (game === 'robotron') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
+    // All other games (including Pong and Maze) handle their own audio natively
+    else window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
   };
 
   return (
@@ -5636,8 +5689,6 @@ const handleStart = async () => {
             <div className="crt-rgb-noise"></div>
 
             {/* MAIN CONTENT (Games & Menus) */}
-            
-            {/* --- MOVED INITIALIZATION SCREEN --- */}
             {gameState === 'off' && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-transparent p-4 text-center pointer-events-auto">
                 <h1 className="vcr-font text-[#0f0] text-4xl md:text-6xl mb-8 blink-text">CLICK THE BUTTON TO BEGIN</h1>
@@ -5649,12 +5700,14 @@ const handleStart = async () => {
                 </button>
               </div>
             )}
-            {/* ADD THIS LINE HERE: */}
-            {gameState === 'booting' && <BootScreen />}
 
-            {/* UPDATED: Added audioCtx={audioContextRef.current} */}
+            {gameState === 'booting' && <BootScreen />}
             {gameState === 'menu' && <GameMenu audioCtx={audioContextRef.current} onSelect={handleGameSelect} />}
-            {/*gameState === '1942' && <Game1942 audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />*/}           
+            
+            {/* --- NEW GAMES MOUNTED HERE --- */}
+            {gameState === 'Pong' && <PongGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
+            {gameState === 'maze' && <MazeGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
+            {gameState === 'tank' && <TankGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'batzon' && <BattlezoneGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'galaga' && <GalagaGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />} 
             {gameState === 'commando' && <CommandoGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
@@ -5665,7 +5718,7 @@ const handleStart = async () => {
             {gameState === 'invaders' && <InvadersGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'robotron' && <NewRobotronGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'robotron_fallback' && <RobotronGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
-            {gameState === '1941' && <AirplaneGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
+            {/* {gameState === '1941' && <AirplaneGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />} */}
             {gameState === 'controller' && <ControllerSetup onMenu={handleReturnToMenu} />}
 
             {/* CRT TUBE VIGNETTE (Darkens corners) */}
