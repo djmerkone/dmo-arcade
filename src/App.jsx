@@ -5729,7 +5729,7 @@ export default function App() {
             {gameState === 'invaders' && <InvadersGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'robotron' && <NewRobotronGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'robotron_fallback' && <RobotronGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
-            {/* {gameState === '1941' && <AirplaneGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />} */}
+            {gameState === '1941' && <AirplaneGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'controller' && <ControllerSetup onMenu={handleReturnToMenu} />}
 
             {/* CRT TUBE VIGNETTE (Darkens corners) */}
