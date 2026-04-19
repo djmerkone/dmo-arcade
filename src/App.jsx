@@ -4850,6 +4850,8 @@ stars: Array(120).fill().map(() => {
         twinkleTimer: Math.random() * 100
       };
     }),
+    keys: {}
+  });
 
   // Pixel Art Dictionaries
   const SHIP_SPRITE = [
