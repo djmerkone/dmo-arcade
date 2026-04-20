@@ -6,6 +6,7 @@ import PongGame from './Pong';
 import MazeGame from './Maze';
 import TankGame from './Tank';
 import OregonTrailGame from './Trail';
+import GilgameshStory from './Gilg';
 
 // import Game1942 from './1942/index';   <-- ADD // HERE
 // (or import AirplaneGame from './1941/index'; depending on how you named it)
@@ -434,8 +435,8 @@ const GameMenu = ({ audioCtx, onSelect }) => {
       return () => bgMusic.stop();
   }, [audioCtx]);
 
-  // NEW: Added Pong and Maze to the top of the menu!
   const MENU_OPTIONS = [
+      { text: "EPIC OF GILGAMESH (Demo)", game: "gilgamesh", isNew: true },
       { text: "CLASSIC PONG", game: 'Pong', isNew: true },
       { text: "BATTLE TANK ZONE", game: 'batzon' },
       { text: "GALAXY FIGHTER", game: 'galaga' },
@@ -454,6 +455,10 @@ const GameMenu = ({ audioCtx, onSelect }) => {
 
   const bgState = useRef({
     tick: 0,
+    // --- NEW: GILGAMESH MENU ASSETS ---
+    gilgParticles: Array(40).fill().map(() => ({ x: Math.random() * 800, y: Math.random() * 600, speed: 0.5 + Math.random() * 1.5, size: 1 + Math.random() * 3, phase: Math.random() * Math.PI * 2 })),
+    gilgRays: Array(6).fill().map((_, i) => ({ angle: -0.3 + (i * 0.12), speed: 0.005 + Math.random() * 0.01, phase: Math.random() * Math.PI * 2 })),
+    // ----------------------------------
     stars: Array(150).fill().map(() => ({ x: Math.random() * 800, y: Math.random() * 600, speed: 1 + Math.random() * 3, size: Math.random() > 0.5 ? 2 : 1 })),
     missiles: Array(10).fill().map(() => ({ x: Math.random() * 800, y: Math.random() * 600, speed: 4 + Math.random() * 4 })),
     asteroids: Array(6).fill().map(() => ({ x: Math.random() * 800, y: Math.random() * 600, vx: (Math.random()-0.5)*2, vy: (Math.random()-0.5)*2, rot: 0, rotSpeed: (Math.random()-0.5)*0.05, pts: Array(8).fill().map(()=> 20+Math.random()*20) })),
@@ -542,7 +547,53 @@ const GameMenu = ({ audioCtx, onSelect }) => {
       ctx.globalAlpha = 0.2; 
       let sel = selectedIndex.current;
 
-      if (MENU_OPTIONS[sel].game === 'Pong') { 
+      // --- EPIC OF GILGAMESH MENU ANIMATION ---
+      if (MENU_OPTIONS[sel].game === 'gilgamesh') {
+        // Deep Uruk Sunset Gradient
+        let grad = ctx.createLinearGradient(0, 0, 0, 600);
+        grad.addColorStop(0, '#150500');
+        grad.addColorStop(1, '#4a0b00');
+        ctx.globalAlpha = 0.5; 
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 800, 600);
+
+        // Volumetric God Rays
+        ctx.globalCompositeOperation = 'screen';
+        let originX = 400 + Math.sin(gs.tick * 0.005) * 100;
+        let originY = -100;
+        gs.gilgRays.forEach(ray => {
+            let curAngle = ray.angle + Math.sin(gs.tick * ray.speed + ray.phase) * 0.15;
+            let length = 1200;
+            let x1 = originX + Math.cos(curAngle - 0.08) * length;
+            let y1 = originY + Math.sin(curAngle - 0.08) * length;
+            let x2 = originX + Math.cos(curAngle + 0.08) * length; // FIXED!
+            let y2 = originY + Math.sin(curAngle + 0.08) * length; // FIXED!
+            
+            let rGrad = ctx.createLinearGradient(originX, originY, (x1+x2)/2, (y1+y2)/2);
+            rGrad.addColorStop(0, 'rgba(255, 180, 50, 0.4)');
+            rGrad.addColorStop(0.5, 'rgba(255, 100, 20, 0.15)');
+            rGrad.addColorStop(1, 'rgba(255, 100, 20, 0)');
+            
+            ctx.fillStyle = rGrad;
+            ctx.beginPath(); ctx.moveTo(originX, originY); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2); ctx.fill();
+        });
+
+        // Rising Divine Embers
+        gs.gilgParticles.forEach(p => {
+            p.y -= p.speed;
+            p.x += Math.sin(gs.tick * 0.02 + p.phase) * 1.5;
+            if (p.y < -10) { p.y = 620; p.x = Math.random() * 800; }
+            
+            ctx.fillStyle = `rgba(255, ${150 + Math.random()*105}, 0, 0.7)`;
+            ctx.shadowBlur = p.size * 2;
+            ctx.shadowColor = '#ffaa00';
+            ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+            ctx.shadowBlur = 0;
+        });
+        ctx.globalCompositeOperation = 'source-over';
+      } 
+      // ------------------------------------------
+      else if (MENU_OPTIONS[sel].game === 'Pong') { 
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'; ctx.lineWidth = 4;
         ctx.setLineDash([15, 20]);
         ctx.beginPath(); ctx.moveTo(400, 0); ctx.lineTo(400, 600); ctx.stroke();
@@ -580,34 +631,27 @@ const GameMenu = ({ audioCtx, onSelect }) => {
 
         // Animate and draw background tanks
         gs.tanks.forEach(t => {
-            // Very basic wandering logic
             if (Math.random() < 0.02) t.rotDir = (Math.random() - 0.5) * 0.05;
             t.angle += t.rotDir;
             t.x += Math.cos(t.angle) * t.speed;
             t.y += Math.sin(t.angle) * t.speed;
             
-            // Wrap around screen
             if (t.x < -50) t.x = 850; if (t.x > 850) t.x = -50;
             if (t.y < -50) t.y = 650; if (t.y > 650) t.y = -50;
 
-            // Draw Tank
             ctx.save();
             ctx.translate(t.x, t.y);
             ctx.rotate(t.angle);
             
-            // Treads
             ctx.fillStyle = '#333';
             ctx.fillRect(-14, -14, 28, 6);
             ctx.fillRect(-14, 8, 28, 6);
             
-            // Body
             ctx.fillStyle = t.color;
             ctx.fillRect(-10, -10, 20, 20);
             
-            // Barrel
             ctx.fillRect(0, -2, 18, 4);
             
-            // Fake bullets shooting
             if (Math.floor(gs.tick / 10) % 10 === 0) {
                ctx.fillStyle = '#fff';
                ctx.fillRect(30 + (gs.tick % 20)*5, -2, 4, 4);
@@ -710,8 +754,8 @@ const GameMenu = ({ audioCtx, onSelect }) => {
           drawCRTText(ctx, "▲", 400, 170, arrowColor, '40px "VT323", monospace');
       }
 
-// Draw the 3 visible options
-for (let i = 0; i < 3; i++) {
+      // Draw the 3 visible options
+      for (let i = 0; i < 3; i++) {
           let optIdx = startIdx + i;
           if (optIdx >= MENU_OPTIONS.length) break;
           let isSel = (optIdx === sel);
@@ -724,7 +768,6 @@ for (let i = 0; i < 3; i++) {
           
           // Render the "NEW" text directly above the title if flagged
           if (MENU_OPTIONS[optIdx].isNew) {
-              // Push it slightly higher if the main text is currently enlarged (selected)
               let newLabelYOffset = isSel ? yOffset - 35 : yOffset - 25;
               drawCRTText(ctx, "NEWLY ADDED TITLE", 400, newLabelYOffset, '#f00', '20px "VT323", monospace');
           }
@@ -5181,6 +5224,7 @@ export default function App() {
     else if (game === 'commando') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'commandoStart' }));
     else if (game === 'snake') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'snakeStart' }));
     else if (game === '1941') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Start' }));
+    else if (game === 'gilgamesh') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
     // All other games (including Pong and Maze) handle their own audio natively
     else window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
   };
@@ -5304,6 +5348,7 @@ export default function App() {
             {gameState === 'menu' && <GameMenu audioCtx={audioContextRef.current} onSelect={handleGameSelect} />}
             
             {/* --- NEW GAMES MOUNTED HERE --- */}
+            {gameState === 'gilgamesh' && <GilgameshStory audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'Pong' && <PongGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'maze' && <MazeGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'tank' && <TankGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
