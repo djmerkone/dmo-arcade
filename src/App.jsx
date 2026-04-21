@@ -7,6 +7,8 @@ import MazeGame from './Maze';
 import TankGame from './Tank';
 import OregonTrailGame from './Trail';
 import GilgameshStory from './Gilg';
+import LunarLander from './Lander'; 
+import BattleshipGame from './Battleship'; 
 
 // import Game1942 from './1942/index';   <-- ADD // HERE
 // (or import AirplaneGame from './1941/index'; depending on how you named it)
@@ -349,7 +351,7 @@ const BootScreen = () => {
       " ",
       "Initializing I/O Ports... OK",
       "Mounting /dev/sda1... OK",
-      "Loading BASS_OS.SYS..."
+      "Loading crtARCADE_OS.SYS..."
     ];
 
     // Programmatically generate 100 lines of fake memory parsing!
@@ -437,6 +439,8 @@ const GameMenu = ({ audioCtx, onSelect }) => {
 
   const MENU_OPTIONS = [
       { text: "EPIC OF GILGAMESH (Demo)", game: "gilgamesh", isNew: true },
+      { text: "LUNAR LANDER (1979)", game: "lunar", isNew: true },
+      { text: "BATTLE TACTICS", game: "battleship", isNew: true },
       { text: "CLASSIC PONG", game: 'Pong', isNew: true },
       { text: "BATTLE TANK ZONE", game: 'batzon' },
       { text: "GALAXY FIGHTER", game: 'galaga' },
@@ -455,6 +459,21 @@ const GameMenu = ({ audioCtx, onSelect }) => {
 
   const bgState = useRef({
     tick: 0,
+
+    // --- LUNAR LANDER ASSETS ---
+    lunarTerrain: Array(25).fill().map((_, i) => ({ x: i * 40, y: 400 + Math.random() * 150 })),
+    lunarLander: { x: 400, y: 100, vy: 0, thrust: false },
+    lunarParticles: [],
+
+    // --- BATTLESHIP RADAR ASSETS --- // <--- ADD THIS BLOCK
+    battleshipRadar: 0,
+    battleshipBlips: Array(15).fill().map(() => ({
+        x: (Math.random() - 0.5) * 450,
+        y: (Math.random() - 0.5) * 450,
+        life: 0,
+        isEnemy: Math.random() > 0.5
+    })),
+
     // --- NEW: GILGAMESH MENU ASSETS ---
     gilgParticles: Array(40).fill().map(() => ({ x: Math.random() * 800, y: Math.random() * 600, speed: 0.5 + Math.random() * 1.5, size: 1 + Math.random() * 3, phase: Math.random() * Math.PI * 2 })),
     gilgRays: Array(6).fill().map((_, i) => ({ angle: -0.3 + (i * 0.12), speed: 0.005 + Math.random() * 0.01, phase: Math.random() * Math.PI * 2 })),
@@ -547,8 +566,97 @@ const GameMenu = ({ audioCtx, onSelect }) => {
       ctx.globalAlpha = 0.2; 
       let sel = selectedIndex.current;
 
+      // --- LUNAR LANDER MENU ANIMATION ---
+      if (MENU_OPTIONS[sel].game === 'lunar') {
+          ctx.fillStyle = '#fff';
+          gs.stars.forEach(s => ctx.fillRect(s.x, s.y, s.size, s.size));
+          
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.shadowBlur = 4; ctx.shadowColor = '#fff';
+          ctx.beginPath();
+          gs.lunarTerrain.forEach((pt, i) => {
+              let px = pt.x - ((gs.tick * 0.5) % 40);
+              if (i === 0) ctx.moveTo(px, pt.y); else ctx.lineTo(px, pt.y);
+          });
+          ctx.stroke(); ctx.shadowBlur = 0;
+
+          let l = gs.lunarLander;
+          l.vy += 0.05; 
+          l.thrust = l.vy > 1.0 || l.y > 250; 
+          
+          if (l.thrust) {
+              l.vy -= 0.15;
+              for(let i=0; i<2; i++) gs.lunarParticles.push({ x: l.x, y: l.y + 15, vx: (Math.random()-0.5)*2, vy: Math.random()*2+2, life: 1.0 });
+          }
+          l.y += l.vy;
+          if (l.y < 50) l.vy += 0.5;
+
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath();
+          ctx.moveTo(l.x, l.y-10); ctx.lineTo(l.x+8, l.y+5); ctx.lineTo(l.x-8, l.y+5); ctx.closePath();
+          ctx.moveTo(l.x-8, l.y+5); ctx.lineTo(l.x-12, l.y+15); 
+          ctx.moveTo(l.x+8, l.y+5); ctx.lineTo(l.x+12, l.y+15); 
+          ctx.stroke();
+          
+          if (l.thrust) {
+              ctx.strokeStyle = '#ff8800'; ctx.beginPath(); 
+              ctx.moveTo(l.x-4, l.y+5); ctx.lineTo(l.x, l.y+15+Math.random()*15); ctx.lineTo(l.x+4, l.y+5); ctx.stroke();
+          }
+
+          for (let i = gs.lunarParticles.length - 1; i >= 0; i--) {
+              let p = gs.lunarParticles[i];
+              p.x += p.vx; p.y += p.vy; p.life -= 0.05;
+              ctx.fillStyle = `rgba(255, 150, 0, ${p.life})`;
+              ctx.fillRect(p.x, p.y, 2, 2);
+              if (p.life <= 0) gs.lunarParticles.splice(i, 1);
+          }
+      }
+
+// --- BATTLESHIP MENU ANIMATION ---
+      else if (MENU_OPTIONS[sel].game === 'battleship') {
+          const cx = 400; const cy = 300; const r = 260;
+          gs.battleshipRadar += 0.04;
+          
+          // Draw Vector Radar Rings
+          ctx.strokeStyle = 'rgba(0, 255, 0, 0.2)'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(cx, cy, r*0.66, 0, Math.PI*2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(cx, cy, r*0.33, 0, Math.PI*2); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx-r, cy); ctx.lineTo(cx+r, cy); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx, cy-r); ctx.lineTo(cx, cy+r); ctx.stroke();
+
+          // Draw Glowing Radar Sweep
+          let sweepAngle = gs.battleshipRadar % (Math.PI * 2);
+          const grad = ctx.createConicGradient(sweepAngle, cx, cy);
+          grad.addColorStop(0, 'rgba(0, 255, 0, 0.6)');
+          grad.addColorStop(0.1, 'rgba(0, 255, 0, 0)');
+          grad.addColorStop(1, 'rgba(0, 255, 0, 0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill();
+
+          ctx.strokeStyle = '#0f0'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(sweepAngle)*r, cy + Math.sin(sweepAngle)*r); ctx.stroke();
+
+          // Draw Blips when the sweep passes them
+          gs.battleshipBlips.forEach(b => {
+              if (Math.hypot(b.x, b.y) > r - 10) return; // Keep inside radar bounds
+              
+              let angleToBlip = Math.atan2(b.y, b.x);
+              if (angleToBlip < 0) angleToBlip += Math.PI * 2;
+              
+              let diff = sweepAngle - angleToBlip;
+              if (diff > 0 && diff < 0.15) b.life = 1.0;
+
+              if (b.life > 0) {
+                  ctx.fillStyle = b.isEnemy ? `rgba(255, 0, 0, ${b.life})` : `rgba(0, 255, 0, ${b.life})`;
+                  ctx.shadowBlur = 10; ctx.shadowColor = ctx.fillStyle;
+                  ctx.beginPath(); ctx.arc(cx + b.x, cy + b.y, 5, 0, Math.PI*2); ctx.fill();
+                  ctx.shadowBlur = 0;
+                  b.life -= 0.015;
+              }
+          });
+      }
+
       // --- EPIC OF GILGAMESH MENU ANIMATION ---
-      if (MENU_OPTIONS[sel].game === 'gilgamesh') {
+      else if (MENU_OPTIONS[sel].game === 'gilgamesh') {
         // Deep Uruk Sunset Gradient
         let grad = ctx.createLinearGradient(0, 0, 0, 600);
         grad.addColorStop(0, '#150500');
@@ -5225,6 +5333,8 @@ export default function App() {
     else if (game === 'snake') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'snakeStart' }));
     else if (game === '1941') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: '1941Start' }));
     else if (game === 'gilgamesh') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
+    else if (game === 'lunar') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
+    else if (game === 'battleship') window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
     // All other games (including Pong and Maze) handle their own audio natively
     else window.dispatchEvent(new CustomEvent('bgmTrack', { detail: 'none' }));
   };
@@ -5349,6 +5459,8 @@ export default function App() {
             
             {/* --- NEW GAMES MOUNTED HERE --- */}
             {gameState === 'gilgamesh' && <GilgameshStory audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
+            {gameState === 'lunar' && <LunarLander audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
+            {gameState === 'battleship' && <BattleshipGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'Pong' && <PongGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'maze' && <MazeGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}
             {gameState === 'tank' && <TankGame audioCtx={audioContextRef.current} onMenu={handleReturnToMenu} />}

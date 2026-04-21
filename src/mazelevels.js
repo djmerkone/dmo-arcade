@@ -1,222 +1,113 @@
 // src/mazelevels.js
 
-/*
-  LEGEND:
-  # = Wall 
-  P = Player Start 
-  E = Eyeball (Wandering)
-  R = Robot (Hunting)
-  T = Trap 
-  X = Exit Elevator 
-  [space] = Empty Corridor
-*/
-
-const levels = [];
-
-// --- LEVELS 1-3: Handcrafted Introductions ---
-levels.push([
-    "#####################",
-    "#P  #       # E     #",
-    "#   #   #   #   #   #",
-    "#   #   #   #   #   #",
-    "#       #       #   #",
-    "#####   #####   #   #",
-    "# E     # T #   # R #",
-    "#   #   #   #   #   #",
-    "#   #       #       #",
-    "#   #########   #####",
-    "#           #   # E #",
-    "#########   #   #   #",
-    "# R     #   #   #   #",
-    "#   #   #   #       #",
-    "#   #   #   #####   #",
-    "# T #   # E # T #   #",
-    "#   #   #   #   #   #",
-    "#   #   #           #",
-    "#   #####   #####   #",
-    "#           # X     #",
-    "#####################"
-]);
-
-levels.push([
-    "#########################",
-    "#P          # R         #",
-    "#########   #   #####   #",
-    "# E         #       #   #",
-    "#   #####   #####   #   #",
-    "#   # T #       #   #   #",
-    "#   #   #####   #   #   #",
-    "#   #       #   # E #   #",
-    "#   #####   #   #####   #",
-    "# R         #           #",
-    "#####################   #",
-    "#                   #   #",
-    "#   #####   #####   #   #",
-    "#   # E #   # R #   #   #",
-    "#   #   #   #   #   #   #",
-    "#   #   #   #   #   #   #",
-    "#   # T #   # T #   # E #",
-    "#   #####   #####   #####",
-    "#                       #",
-    "#####   #########   #   #",
-    "# E #   # R     #   #   #",
-    "#   #   #   #   #   #   #",
-    "#       #   #   # T #   #",
-    "#           #       # X #",
-    "#########################"
-]);
-
-levels.push([
-    "###############################",
-    "#P    # E           # R       #",
-    "###   #   #######   #   ###   #",
-    "#     #   #     #   #   #     #",
-    "#   ###   #   # #   #####   ###",
-    "#   #     #   # #       #   # #",
-    "#   #   ###   # #####   #   # #",
-    "#   #   # R   #     #   #     #",
-    "### #   #   ####### #   #######",
-    "#   #   #         # # E       #",
-    "#   #####   ###   # #######   #",
-    "#   # T     #     #       #   #",
-    "#   #   #####   #######   #   #",
-    "# E #   # R         #     #   #",
-    "#####   #########   #   ###   #",
-    "#               #   #   #     #",
-    "#   #########   #   #   #   ###",
-    "#   # E     #   #   #   #     #",
-    "#   #   #   #   #   #####   # #",
-    "#   #   #   #   # T       R # #",
-    "#   #   #   #   ############# #",
-    "#   #   #   #                 #",
-    "### #   #####   ########### ###",
-    "#   #           # E # T   #   #",
-    "#   #############   #   # #   #",
-    "#   # R             #   # #   #",
-    "#   #   #############   # #   #",
-    "#   #                   # E   #",
-    "#   #####################   ###",
-    "#                       # X   #",
-    "###############################"
-]);
-
-// --- LEVELS 4-32: Procedural Depth-First Labyrinth Engine ---
-// Generates mathematically perfect, guaranteed-solvable mazes of increasing size and terror.
-function generateMaze(levelIndex) {
-    // Scales the maze up as levels progress (Capped at 55x55 so it doesn't crash the browser)
-    const size = Math.min(55, 15 + Math.floor(levelIndex / 2) * 2); 
+/**
+ * Procedural Maze Generator for MAZE WAR: EVOLVED
+ * Features:
+ * - Recursive Backtracker algorithm for massive labyrinths
+ * - Dynamic scaling: Levels get larger as you progress
+ * - Secret Rooms connected by Illusion Walls
+ * - Trap Rooms (3x3 open areas with floor traps and ambushes)
+ * - Loot injection (Ammo & Health)
+ */
+export function generateMaze(level) {
+    let innerSize = 25 + (level * 6);
+    if (innerSize % 2 === 0) innerSize++;
     
-    // 1. Create solid block of walls
+    // Total grid includes a 10-tile padding for secret rooms
+    let size = innerSize + 10; 
     let grid = Array(size).fill().map(() => Array(size).fill('#'));
 
-    // 2. Carve paths using DFS
-    const stack = [[1, 1]];
-    grid[1][1] = ' ';
-    const dirs = [[0, 2], [0, -2], [2, 0], [-2, 0]];
+    // 1. Recursive Backtracker (Offset by 5 to stay in the center)
+    let stack = [[6, 6]];
+    grid[6][6] = ' ';
 
-    while (stack.length > 0) {
-        let [cx, cy] = stack[stack.length - 1];
-        
-        // Randomize directions to create winding, unpredictable corridors
-        dirs.sort(() => Math.random() - 0.5);
+    const dirs = [[0,-2], [0,2], [-2,0], [2,0]];
+
+    while(stack.length > 0) {
+        let [x, y] = stack[stack.length-1];
+        dirs.sort(() => Math.random() - 0.5); 
         let carved = false;
-
-        for (let [dx, dy] of dirs) {
-            let nx = cx + dx, ny = cy + dy;
-            
-            // If the target cell is within bounds and is a solid wall
-            if (nx > 0 && nx < size - 1 && ny > 0 && ny < size - 1 && grid[ny][nx] === '#') {
-                // Knock down the wall between current and target
-                grid[cy + dy / 2][cx + dx / 2] = ' ';
-                // Clear the target cell
+        
+        for(let [dx, dy] of dirs) {
+            let nx = x + dx, ny = y + dy;
+            if (nx > 4 && nx < innerSize+4 && ny > 4 && ny < innerSize+4 && grid[ny][nx] === '#') {
+                grid[y + dy/2][x + dx/2] = ' ';
                 grid[ny][nx] = ' ';
                 stack.push([nx, ny]);
                 carved = true;
                 break;
             }
         }
-        // If we hit a dead end, backtrack
         if (!carved) stack.pop();
     }
 
-    // 3. Braid the maze (knock down a few random walls to create loops so it's not just one path)
-    let braids = Math.floor(size / 3);
-    for (let i = 0; i < braids; i++) {
-        let rx = 2 + Math.floor(Math.random() * (size - 4));
-        let ry = 2 + Math.floor(Math.random() * (size - 4));
+    // 2. Loop Injection (Prevent too many dead ends)
+    let loops = Math.floor(innerSize * innerSize * 0.05);
+    for(let i=0; i<loops; i++) {
+        let rx = 5 + Math.floor(Math.random()*(innerSize-2));
+        let ry = 5 + Math.floor(Math.random()*(innerSize-2));
         if (grid[ry][rx] === '#') grid[ry][rx] = ' ';
     }
 
-    // 4. Place Key Entities
-    grid[1][1] = 'P';               // Player Top Left
-    grid[size - 2][size - 2] = 'X'; // Exit Bottom Right
-
-    // 5. Populate Enemies and Traps based on Level Difficulty
-    let numE = Math.floor(levelIndex * 1.5);
-    let numR = Math.floor(levelIndex * 1.2);
-    let numT = Math.floor(levelIndex * 1.8);
-
-    const placeEntity = (char, count) => {
-        while (count > 0) {
-            let rx = 1 + Math.floor(Math.random() * (size - 2));
-            let ry = 1 + Math.floor(Math.random() * (size - 2));
-            
-            // Only place in empty corridors, keeping spawn and exit clear
-            if (grid[ry][rx] === ' ' && !(rx === 1 && ry === 1) && !(rx === size - 2 && ry === size - 2)) {
-                grid[ry][rx] = char;
-                count--;
+    // 3. Trap Room Injection (Carve 3x3 rooms)
+    let numTrapRooms = 1 + Math.floor(level / 2);
+    for(let i = 0; i < numTrapRooms; i++) {
+        let cx = 8 + Math.floor(Math.random()*(innerSize-8));
+        let cy = 8 + Math.floor(Math.random()*(innerSize-8));
+        
+        // Carve the 3x3 room
+        for(let ty = cy-1; ty <= cy+1; ty++) {
+            for(let tx = cx-1; tx <= cx+1; tx++) {
+                grid[ty][tx] = ' ';
             }
         }
-    };
+        grid[cy][cx] = 'T'; // Spike Trap in the center
+        grid[cy-1][cx-1] = 'E'; // Ambush Enemy in corner
+        grid[cy+1][cx+1] = 'R'; // Ambush Shooter in opposite corner
+    }
 
-    placeEntity('E', numE);
-    placeEntity('R', numR);
-    placeEntity('T', numT);
+    // 4. Set Pieces
+    grid[6][6] = 'P'; // Player Spawn
+    
+    // Exit Elevator at the far opposite corner
+    grid[innerSize+3][innerSize+3] = 'X';
+    grid[innerSize+3][innerSize+2] = ' ';
+    grid[innerSize+2][innerSize+3] = ' ';
+
+    // 5. Secret Boss Room (Carved into the top-right padding boundary)
+    for(let y = 1; y <= 4; y++) {
+        for(let x = innerSize + 2; x <= innerSize + 6; x++) {
+            grid[y][x] = ' ';
+        }
+    }
+    // Connect it with an Illusion Wall '?'
+    grid[5][innerSize+4] = '?'; 
+    grid[6][innerSize+4] = ' '; 
+
+    // Boss & Loot inside the secret room
+    grid[2][innerSize+4] = 'B'; // Boss
+    grid[1][innerSize+3] = 'A'; // Ammo
+    grid[1][innerSize+5] = 'H'; // Health
+    grid[4][innerSize+2] = 'A'; // Ammo
+    grid[4][innerSize+6] = 'A'; // Ammo
+
+    // 6. Sprinkle Hostiles and Loot in main maze
+    const enemyDensity = 0.03 + (level * 0.01);
+    for(let y=5; y<innerSize+4; y++) {
+        for(let x=5; x<innerSize+4; x++) {
+            if (grid[y][x] === ' ' && (x > 10 || y > 10) && (x !== innerSize+3 || y !== innerSize+3)) {
+                let rand = Math.random();
+                if (rand < enemyDensity) {
+                    let isShooter = Math.random() < (level * 0.15);
+                    grid[y][x] = isShooter ? 'R' : 'E';
+                } else if (rand > 0.98) {
+                    grid[y][x] = 'A'; // Ammo Drop
+                } else if (rand > 0.96) {
+                    grid[y][x] = 'H'; // Health Drop
+                }
+            }
+        }
+    }
 
     return grid.map(row => row.join(''));
 }
-
-// Generate the main campaign loop
-for (let i = 4; i <= 32; i++) {
-    levels.push(generateMaze(i));
-}
-
-
-// --- LEVEL 33: THE KILL SCREEN (Memory Corruption Glitch) ---
-// Emulates the Pac-Man Level 256 wrap-around bug. 
-// The left side seems normal. The right side is a chaotic, inescapable wall of data.
-levels.push([
-    "#################################",
-    "#P # E # R T # # # E R R R E R  #",
-    "#  #   # T ### # # # # # # # #  #",
-    "#  T E #   #   # T E R T E R T  #",
-    "#### ### ### ### E R R R E R R  #",
-    "#      R   T # R E R T E R T E  #",
-    "# ######## ### T # # # # # # #  #",
-    "# E  #   # # # # T T T T T T T  #",
-    "#### # # # # # X X X X X X X X  #",
-    "#  T # # # # # E R T E R T E R  #",
-    "# ## # # # # # # # # # # # # #  #",
-    "#  # # # E # # R R R R R R R R  #",
-    "## # # ### # # E E E E E E E E  #",
-    "#  # #   # # # T T T T T T T T  #",
-    "# ## ### # # # X X X X X X X X  #",
-    "#  #   # # R # E R T E R T E R  #",
-    "## ### # ### # # # # # # # # #  #",
-    "#  #   #   # # R R R R R R R R  #",
-    "# ## ##### # # E E E E E E E E  #",
-    "#  #     # # # T T T T T T T T  #",
-    "## ##### # ### X X X X X X X X  #",
-    "#  #   # #   # E R T E R T E R  #",
-    "# ## # # ### # # # # # # # # #  #",
-    "#  # # #   # E R R R R R R R R  #",
-    "## # # ### # R E E E E E E E E  #",
-    "#  # #   # # T T T T T T T T T  #",
-    "# ## ### # ### X X X X X X X X  #",
-    "#  #   # #   R E R T E R T E R  #",
-    "## ### # ### T # # # # # # # #  #",
-    "#      #     # R R R R R R R R  #",
-    "#################################"
-]);
-
-export const mazeLevels = levels;
